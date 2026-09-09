@@ -1,0 +1,48 @@
+{
+  "name": "runway-grid",
+  "version": "0.1.0",
+  "description": "High-performance virtual scroll custom element (list & 2D grid) backed by a Rust/WASM layout engine",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/runway-grid.js",
+  "module": "./dist/runway-grid.js",
+  "types": "./dist/runway-grid.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/runway-grid.d.ts",
+      "import": "./dist/runway-grid.js",
+      "default": "./dist/runway-grid.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "sideEffects": true,
+  "keywords": [
+    "virtual-scroll",
+    "web-component",
+    "custom-element",
+    "wasm",
+    "grid"
+  ],
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "build:lib": "vite build --config vite.lib.config.js && npm run build:types",
+    "build:types": "node scripts/copy-types.mjs",
+    "prepublishOnly": "npm run build:lib",
+    "build:wasm": "node scripts/build-wasm.mjs",
+    "build:wasm-base64": "node scripts/generate-wasm-base64.mjs",
+    "build:engine": "npm run build:wasm && npm run build:wasm-base64",
+    "typecheck": "tsc",
+    "test:e2e": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.62.1",
+    "typescript": "^7.0.2",
+    "vite": "^8.1.1"
+  }
+}

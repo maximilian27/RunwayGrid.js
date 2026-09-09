@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <style>
+    /* Define the viewport window size */
+    runway-grid {
+      display: block;
+      height: 300px;
+      width: 500px;
+      border: 1px solid #ccc;
+      background: #fff;
+      margin-top: 10px;
+    }
+    #grid-demo {
+      height: 400px;
+      width: 700px;
+    }
+    #h-list {
+      height: 60px;
+      width: 700px;
+    }
+    .list-item {
+      padding: 0 10px;
+      line-height: 20px; /* Must match row-size attribute */
+      border-bottom: 1px solid #eee;
+    }
+    .controls {
+      display: flex;
+      gap: 5px;
+      margin-bottom: 10px;
+    }
+    h2 {
+      margin-top: 30px;
+    }
+  </style>
+</head>
+<body>
+
+<h2>1. Vertical list (single column)</h2>
+<div class="controls">
+  <input type="number" id="index-input" value="50000" min="0" max="999999" />
+  <button id="jump-btn">Jump to Index</button>
+  <button id="start-btn">Top (0)</button>
+  <button id="end-btn">End </button>
+</div>
+
+<runway-grid
+    id="my-list"
+    orientation="vertical"
+    row-size="20"
+    buffer-size="5"
+></runway-grid>
+
+<h2>2. 2D grid (independent vertical + horizontal panning)</h2>
+<div class="controls">
+  <button id="grid-top-left-btn">Top-Left (0,0)</button>
+  <button id="grid-bottom-right-btn">Bottom-Right (last,last)</button>
+</div>
+
+<runway-grid
+    id="grid-demo"
+    orientation="both"
+    row-size="28"
+    col-size="120"
+    buffer-size="3"
+></runway-grid>
+
+<h2>3. Horizontal list (single row, varying item widths)</h2>
+<div class="controls">
+  <input type="number" id="h-index-input" value="500" min="0" max="4999" />
+  <button id="h-jump-btn">Jump to Index</button>
+  <button id="h-start-btn">Start (0)</button>
+  <button id="h-end-btn">End</button>
+</div>
+
+<runway-grid
+    id="h-list"
+    orientation="horizontal"
+    col-size="120"
+    buffer-size="5"
+></runway-grid>
+
+<script type="module">
+  import '../src/runway-grid.js';
+
+  // ---------------------------------------------------------------------
+  // 1. Vertical list demo
+  // ---------------------------------------------------------------------
+  const virtualScroll = document.getElementById('my-list');
+  const indexInput = document.getElementById('index-input');
+  const jumpBtn = document.getElementById('jump-btn');
+  const startBtn = document.getElementById('start-btn');
+  const endBtn = document.getElementById('end-btn');
+
+  // Generate 1,000,000 items instantly
+  const mockData = Array.from({ length: 1000000 }, (_, i) => `Item string`);
+
+  // Define a highly complex, dynamic layout template.
+  // Signature: (rowItem, rowIndex, colIndex, rowCount, colCount)
+  virtualScroll.template = (item, index, colIndex, count) => {
+    // Categorize items into 3 distinct layout behaviors
+    const isHeader = index % 50 === 0;
+    const isCardWithMedia = !isHeader && index % 7 === 0;
+
+    // 1. Dynamic Section Headers
+    if (isHeader) {
+      return `
+        <div class="list-item section-header"
+             style="background: #f0f4f8; padding: 15px 10px; border-left: 4px solid #0070f3; font-weight: bold; color: #333;">
+          ⚡ FEED SEGMENT CRITERIA - BLOCK ${Math.floor(index / 50)}
+        </div>
+      `;
+    }
+
+    // 2. High-Overhead Card Layout (Simulating DOM thrashing with heavy variable text & shapes)
+    if (isCardWithMedia) {
+      const variableParagraph = "Lorem ipsum dolor sit amet, consectetur adipiscing elit. ".repeat((index % 3) + 1);
+      const mediaHeight = 60 + (index % 4) * 20; // Generates dynamic heights: 60px, 80px, 100px, 120px
+
+      return `
+        <div class="list-item interactive-card" data-id="${index}"
+             style="padding: 15px; background: #fff; border-bottom: 2px solid #eaeaea; display: flex; flex-direction: column; gap: 8px;">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <strong style="color: #0070f3;">#️⃣ System Node ID: ${index}</strong>
+            <span style="font-size: 11px; background: #ffeae6; color: #ff3333; padding: 2px 6px; border-radius: 4px; font-family: monospace;">
+              HIGH AROUSAL METRIC
+            </span>
+          </div>
+          <p style="margin: 0; font-size: 13px; color: #666; line-height: 1.4;">${variableParagraph}</p>
+          <div style="width: 100%; height: ${mediaHeight}px; background: linear-gradient(135deg, #0070f3 0%, #00dfd8 100%); border-radius: 6px; opacity: 0.85; display: flex; align-items: center; justify-content: center; color: white; font-weight: 500; font-size: 12px;">
+            Dynamic Media Block (${mediaHeight}px)
+          </div>
+          <div style="display: flex; gap: 10px; margin-top: 4px;">
+            <button onclick="console.log('Dispatched packet ${index}')" style="padding: 4px 8px; font-size: 12px; cursor: pointer; border: 1px solid #ccc; background: #fff; border-radius: 4px;">Acknowledge</button>
+            <button onclick="this.closest('.interactive-card').style.background='#fdffb6'; console.warn('Bypassed restrictions on ${index}')" style="padding: 4px 8px; font-size: 12px; cursor: pointer; border: 1px solid #ff3333; background: #fff; color: #ff3333; border-radius: 4px;">Bypass Rules</button>
+          </div>
+        </div>
+      `;
+    }
+
+    // 3. Compact Native Baseline Elements
+    return `
+      <div class="list-item standard-row"
+           style="padding: 10px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #eee; font-size: 14px; background: #fafafa;">
+        <span style="font-family: monospace; color: #555;">[Data Entry] ${item} -> Pointer ${index}</span>
+        <span style="color: #999; font-size: 12px;">Offset Track: ${(index / count * 100).toFixed(1)}%</span>
+      </div>
+    `;
+  };
+
+  // Bind the row data (orientation="vertical" -> single column, colCount stays 1)
+  virtualScroll.data = mockData;
+
+  // Hook up the control listeners to test scrollToIndex
+  jumpBtn.addEventListener('click', () => {
+    const targetIndex = Number(indexInput.value);
+    virtualScroll.scrollToIndex(targetIndex);
+  });
+
+  startBtn.addEventListener('click', () => {
+    virtualScroll.scrollToIndex(0);
+  });
+
+  endBtn.addEventListener('click', () => {
+    virtualScroll.scrollToIndex(mockData.length - 1);
+  });
+
+  // Listen to the range changes
+  virtualScroll.addEventListener('rangechange', (e) => {
+    console.log(`Currently rendering rows: ${e.detail.startRow} to ${e.detail.endRow}`);
+  });
+
+  // ---------------------------------------------------------------------
+  // 2. 2D grid demo - independent vertical (rows) + horizontal (columns) panning
+  // ---------------------------------------------------------------------
+  const gridDemo = document.getElementById('grid-demo');
+  const GRID_ROWS = 100000;
+  const GRID_COLS = 500;
+
+  // Column definitions (drives colCount = 500). Must be set before `data` so both
+  // axes are known when the registry is created.
+  gridDemo.columns = Array.from({ length: GRID_COLS }, (_, c) => `Col ${c}`);
+
+  // Row data - each row just needs to exist; actual cell content is computed from
+  // (rowIndex, colIndex) inside the template below.
+  const gridRows = Array.from({ length: GRID_ROWS }, (_, r) => ({ id: r }));
+
+  // Note: `runway-grid` renders cell content inside its own Shadow DOM, so
+  // page-level stylesheet classes (like the light-DOM `.list-item` above) never actually
+  // apply to it - only inline styles (and inherited properties) do. Each cell's box is
+  // individually absolutely-positioned to support independent row/column virtualization,
+  // so an explicit inline `width` matching `col-size` (120px here) is required, otherwise
+  // it shrinks-to-fit around its unstyled text content instead.
+  gridDemo.template = (rowItem, rowIndex, colIndex, rowCount, colCount) => {
+    // Make every 10th row much taller, and every 5th column much wider
+    const isTallRow = rowIndex % 10 === 0;
+    const isWideCol = colIndex % 5 === 0;
+
+    const height = isTallRow ? '150px' : '40px';
+    const width = isWideCol ? '300px' : '120px';
+
+    return `
+      <div style="box-sizing: border-box; width: ${width}; height: ${height}; padding: 8px; border: 1px solid #eee;">
+        R${rowIndex} x C${colIndex}
+      </div>
+    `;
+  };
+
+  gridDemo.data = gridRows;
+
+  document.getElementById('grid-top-left-btn').addEventListener('click', () => {
+    gridDemo.scrollToCell(0, 0);
+  });
+
+  document.getElementById('grid-bottom-right-btn').addEventListener('click', () => {
+    gridDemo.scrollToCell(GRID_ROWS - 1, GRID_COLS - 1);
+  });
+
+  gridDemo.addEventListener('rangechange', (e) => {
+    console.log(
+        `Grid rendering rows ${e.detail.startRow}-${e.detail.endRow}, cols ${e.detail.startCol}-${e.detail.endCol}`
+    );
+  });
+
+  // ---------------------------------------------------------------------
+  // 3. Horizontal list demo - single row, varying item widths
+  // ---------------------------------------------------------------------
+  const hList = document.getElementById('h-list');
+  const hIndexInput = document.getElementById('h-index-input');
+  const hJumpBtn = document.getElementById('h-jump-btn');
+  const hStartBtn = document.getElementById('h-start-btn');
+  const hEndBtn = document.getElementById('h-end-btn');
+
+  const HORIZONTAL_COUNT = 5000;
+
+  // Chip labels of varying length - each one renders to a different natural width.
+  const hLabels = [
+    'New', 'Featured', 'Popular this week', 'Limited Edition', 'Sale',
+    'Back in Stock', 'Staff Pick', 'Trending Now', 'Almost Gone', 'Best Seller',
+  ];
+  const hColors = ['#0070f3', '#ff3333', '#00a86b', '#ff9900', '#8e44ad'];
+
+  // `columns` drives colCount (for orientation="horizontal" the column axis is the
+  // item axis). Must be set before `data` so colCount is known when the registry
+  // is created.
+  hList.columns = Array.from({ length: HORIZONTAL_COUNT }, (_, i) => i);
+
+  // Row data just needs a single entry: orientation="horizontal" forces rowCount to 1
+  // regardless of array length, and setting `data` is what triggers registry setup.
+  hList.data = [null];
+
+  // Signature: (rowItem, rowIndex, colIndex, rowCount, colCount)
+  // Each cell's own DOM width is left unset (auto/shrink-to-fit), so its rendered
+  // width comes purely from its content - the component measures the actual
+  // rendered width via ResizeObserver and grows/shrinks the virtual column to match
+  // (col-size is only the initial estimate used before the real width is known).
+  hList.template = (rowItem, rowIndex, colIndex, rowCount, colCount) => {
+    const label = hLabels[colIndex % hLabels.length];
+    const color = hColors[colIndex % hColors.length];
+    const isWide = colIndex % 4 === 0;
+    const extra = isWide ? ' \u2014 extended description text to force a much wider chip' : '';
+
+    return `
+      <div style="box-sizing: border-box; height: 100%; padding: 0 16px; display: flex; align-items: center; white-space: nowrap; border-right: 1px solid #eee; background: #fafafa;">
+        <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: ${color}; margin-right: 8px; flex-shrink: 0;"></span>
+        <strong style="font-size: 13px; color: #333;">#${colIndex} ${label}${extra}</strong>
+      </div>
+    `;
+  };
+
+  hJumpBtn.addEventListener('click', () => {
+    const targetIndex = Number(hIndexInput.value);
+    hList.scrollToCell(0, targetIndex);
+  });
+
+  hStartBtn.addEventListener('click', () => {
+    hList.scrollToCell(0, 0);
+  });
+
+  hEndBtn.addEventListener('click', () => {
+    hList.scrollToCell(0, HORIZONTAL_COUNT - 1);
+  });
+
+  hList.addEventListener('rangechange', (e) => {
+    console.log(`Horizontal list rendering cols: ${e.detail.startCol} to ${e.detail.endCol}`);
+  });
+</script>
+</body>
+</html>
