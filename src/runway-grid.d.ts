@@ -31,7 +31,23 @@ export interface RangeChangeEvent extends Event {
 }
 
 /**
+ * `wasmerror` is fired on a `RunwayGrid` element if the embedded WASM engine fails to
+ * initialize (e.g. an unsupported browser, a Content-Security-Policy blocking
+ * instantiation of the `atob`-decoded binary, or a corrupt/incompatible build). The
+ * component never renders in this case - listen for this event to implement a fallback.
+ */
+export interface WasmErrorEvent extends Event {
+  type: 'wasmerror';
+  detail: { error: unknown };
+}
+
+/**
  * Renders the content of a single cell.
+ *
+ * **Security note:** returning a `string` assigns it via `innerHTML`, so any value
+ * interpolated into it is parsed as HTML, not text - this is an XSS surface. Escape/sanitize
+ * untrusted content (or return a `Node` and use text APIs like `textContent` instead) whenever
+ * `rowItem` may contain attacker-controlled data.
  *
  * @param rowItem  The row's data entry (the element of the `data` array at `rowIndex`).
  * @param rowIndex Zero-based row index of the cell being rendered.
@@ -55,6 +71,7 @@ export type RunwayGridTemplate = (
  * embedded directly into this module.
  *
  * @fires rangechange - Fired whenever the range of rendered rows/columns changes.
+ * @fires wasmerror - Fired if the embedded WASM engine fails to initialize; the component never renders in this case.
  */
 export declare class RunwayGrid extends HTMLElement {
   /**
@@ -83,6 +100,19 @@ export declare class RunwayGrid extends HTMLElement {
 
   /** Number of extra rows/columns rendered outside the visible viewport, from the `buffer-size` attribute. */
   readonly bufferSize: number;
+
+  /**
+   * Whether initializing the shared embedded WASM engine has completed successfully.
+   * Remains `false` forever if initialization failed - see {@link RunwayGrid.wasmInitError}.
+   */
+  readonly wasmInitialized: boolean;
+
+  /**
+   * The error caught while initializing the shared embedded WASM engine, or `null` if
+   * initialization has not failed (either still pending, or completed successfully). Also
+   * exposed via the `wasmerror` event's `detail.error`.
+   */
+  readonly wasmInitError: unknown;
 
   /**
    * The row data. Setting it (re)builds the internal layout registry and
@@ -154,6 +184,11 @@ export declare class RunwayGrid extends HTMLElement {
     options?: boolean | AddEventListenerOptions,
   ): void;
   addEventListener(
+    type: 'wasmerror',
+    listener: (this: RunwayGrid, ev: WasmErrorEvent) => unknown,
+    options?: boolean | AddEventListenerOptions,
+  ): void;
+  addEventListener(
     type: string,
     listener: EventListenerOrEventListenerObject,
     options?: boolean | AddEventListenerOptions,
@@ -170,6 +205,11 @@ export declare class RunwayGrid extends HTMLElement {
     options?: boolean | EventListenerOptions,
   ): void;
   removeEventListener(
+    type: 'wasmerror',
+    listener: (this: RunwayGrid, ev: WasmErrorEvent) => unknown,
+    options?: boolean | EventListenerOptions,
+  ): void;
+  removeEventListener(
     type: string,
     listener: EventListenerOrEventListenerObject,
     options?: boolean | EventListenerOptions,
@@ -183,5 +223,6 @@ declare global {
 
   interface HTMLElementEventMap {
     rangechange: RangeChangeEvent;
+    wasmerror: WasmErrorEvent;
   }
 }

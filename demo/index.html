@@ -174,6 +174,18 @@
 <script type="module">
   import '../src/runway-grid.js';
 
+  // Escapes HTML special characters so a string can be safely interpolated into an
+  // `innerHTML`-based template without risking XSS, no matter where the value came from.
+  function escapeHtml(value) {
+    return String(value).replace(/[&<>"']/g, (char) => ({
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#39;',
+    }[char]));
+  }
+
   // ---------------------------------------------------------------------
   // 1. Vertical list demo
   // ---------------------------------------------------------------------
@@ -188,6 +200,10 @@
 
   // Define a highly complex, dynamic layout template.
   // Signature: (rowItem, rowIndex, colIndex, rowCount, colCount)
+  //
+  // Every string returned below is assigned via `innerHTML` (see the `template` setter), so
+  // any interpolated value is escaped with `escapeHtml()` first, keeping this pattern safe to
+  // reuse even if `item` (or any derived value) ends up coming from an untrusted source.
   virtualScroll.template = (item, index, colIndex, count) => {
     // Categorize items into 3 distinct layout behaviors
     const isHeader = index % 50 === 0;
@@ -233,7 +249,7 @@
     return `
       <div class="list-item standard-row"
            style="padding: 10px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #eee; font-size: 14px; background: #fafafa;">
-        <span style="font-family: monospace; color: #555;">[Data Entry] ${item} -> Pointer ${index}</span>
+        <span style="font-family: monospace; color: #555;">[Data Entry] ${escapeHtml(item)} -> Pointer ${index}</span>
         <span style="color: #999; font-size: 12px;">Offset Track: ${(index / count * 100).toFixed(1)}%</span>
       </div>
     `;

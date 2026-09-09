@@ -110,6 +110,11 @@ COMPONENT_TEMPLATE.innerHTML = `
  *   `bufferSize` items on each side (ideal for triggering infinite scroll data fetches);
  *   `viewport` is the strict range that excludes the buffer, i.e. only the indices
  *   currently intersecting the visible pixels on screen.
+ * @fires wasmerror - Fired if the embedded WASM engine fails to initialize (e.g. an
+ *   unsupported browser, a Content-Security-Policy blocking instantiation of the
+ *   `atob`-decoded binary, or a corrupt/incompatible build), with the caught error exposed
+ *   as `e.detail.error`. The component never renders in this case - listen for this event to
+ *   implement a fallback (e.g. rendering a plain, non-virtualized list instead).
  */
 export class RunwayGrid extends HTMLElement {
   constructor() {
@@ -139,6 +144,7 @@ export class RunwayGrid extends HTMLElement {
     this.registry = null;
 
     this.wasmInitialized = false;
+    this.wasmInitError = null;
     this._initialLayoutDone = false;
     this._isUpdatingDOM = false;
     this._isProgrammaticScroll = false;
@@ -208,10 +214,24 @@ export class RunwayGrid extends HTMLElement {
    * Awaits the shared WASM engine initialization and, once ready, builds the
    * layout registry if `data`/`columns` were already assigned before the
    * engine finished loading.
+   *
+   * If the shared WASM engine fails to initialize (e.g. an unsupported browser, a
+   * Content-Security-Policy blocking instantiation of the `atob`-decoded binary, or a
+   * corrupt/incompatible build), the rejection is caught here so it never surfaces as an
+   * unhandled promise rejection: `wasmInitError` is set and a `wasmerror` event is
+   * dispatched, giving consumers a chance to react/render a fallback instead of the
+   * component just silently never rendering.
    * @returns {Promise<void>}
    */
   async initWasm() {
-    await ensureWasmInitialized();
+    try {
+      await ensureWasmInitialized();
+    } catch (error) {
+      this.wasmInitError = error;
+      console.error('runway-grid: failed to initialize the embedded WASM engine; the component will not render.', error);
+      this.dispatchEvent(new CustomEvent('wasmerror', { detail: { error } }));
+      return;
+    }
     this.wasmInitialized = true;
     if (this.rows.length || this._colCount > 1) this.setupRegistry();
   }
@@ -897,6 +917,13 @@ export class RunwayGrid extends HTMLElement {
 
   /**
    * Sets the cell rendering function, then immediately re-renders.
+   *
+   * **Security note:** a returned `string` is assigned via `innerHTML`, so any value
+   * interpolated into it (e.g. `rowItem` fields sourced from user input) is parsed as HTML,
+   * not text - this is an XSS surface. Escape/sanitize untrusted content before interpolating
+   * it (or build a `Node`/`DocumentFragment` and use text APIs like `textContent` instead of
+   * returning a raw HTML string) whenever `rowItem` may contain attacker-controlled data.
+   *
    * @param {(rowItem: unknown, rowIndex: number, colIndex: number, rowCount: number, colCount: number) => (string|Node|null|undefined)} renderFn
    *   Renders a single cell's content: return an HTML string (assigned via `innerHTML`) or a `Node` (appended as-is).
    */

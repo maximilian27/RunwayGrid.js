@@ -34,6 +34,13 @@ import 'runway-grid';
   list.addEventListener('rangechange', (e) => {
     console.log(`Rendering rows ${e.buffered.startRow} to ${e.buffered.endRow}`);
   });
+
+  // Fired if the embedded WASM engine fails to initialize (unsupported browser, a CSP
+  // blocking instantiation of the atob-decoded binary, a corrupt build, etc.) - without a
+  // listener like this, the component just silently never renders. See "Error handling" below.
+  list.addEventListener('wasmerror', (e) => {
+    console.error('runway-grid failed to initialize, falling back to a plain list:', e.detail.error);
+  });
 </script>
 ```
 
@@ -54,9 +61,11 @@ See the [`demo/`](./demo) folder for complete, runnable examples of all seven us
 
 | Property   | Type                                                                 | Description                                                                                                   |
 |------------|-----------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------|
-| `data`     | `Array`                                                                | The row data. Setting it (re)builds the internal layout registry.                                              |
-| `columns`  | `Array \| number`                                                     | The column definitions (or a plain column count). Must be set before `data` when using `horizontal`/`both`.    |
-| `template` | `(rowItem, rowIndex, colIndex, rowCount, colCount) => string \| Node`  | Renders a cell's content. Returning a `string` sets `innerHTML`; returning a `Node` appends it.                 |
+| `data`             | `Array`                                                                | The row data. Setting it (re)builds the internal layout registry.                                              |
+| `columns`          | `Array \| number`                                                     | The column definitions (or a plain column count). Must be set before `data` when using `horizontal`/`both`.    |
+| `template`         | `(rowItem, rowIndex, colIndex, rowCount, colCount) => string \| Node`  | Renders a cell's content. Returning a `string` sets `innerHTML`; returning a `Node` appends it. **See the "Security: `innerHTML` and XSS" section below.** |
+| `wasmInitialized`  | `boolean` (readonly)                                                   | Whether the shared embedded WASM engine finished initializing successfully.                                     |
+| `wasmInitError`    | `unknown` (readonly)                                                   | The error caught while initializing the WASM engine, or `null` if it hasn't failed. Also available as `e.detail.error` on the `wasmerror` event. |
 
 ## Methods
 
@@ -72,6 +81,46 @@ See the [`demo/`](./demo) folder for complete, runnable examples of all seven us
 | Event         | Properties                              | Description                                                                                                                                                        |
 |---------------|-------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `rangechange` | `e.buffered`, `e.viewport`                | Fired whenever the rendered range changes. `buffered` (`{ startRow, endRow, startCol, endCol }`) includes the off-screen buffer; `viewport` is the strict on-screen range. Both are exposed directly on the event, not under `e.detail`. |
+| `wasmerror`   | `e.detail.error`                          | Fired if the embedded WASM engine fails to initialize (unsupported browser, CSP blocking `atob`-decoded binary instantiation, corrupt/incompatible build, etc.). The component never renders in this case; without a listener the failure would otherwise be an unhandled promise rejection with no visible fallback. See "Error handling" below. |
+
+## Error handling
+
+On construction, every `<runway-grid>` element asynchronously initializes the shared embedded
+WASM engine (`initWasm()`). This can fail - e.g. in a browser without WebAssembly support, when
+a Content-Security-Policy blocks instantiating the `atob`-decoded binary, or if the embedded
+build is somehow corrupt/incompatible. That failure is caught internally (so it never surfaces
+as an unhandled promise rejection), and instead:
+
+- `wasmInitError` is set to the caught error (readable any time afterwards).
+- A `wasmerror` event is dispatched, with the error available as `e.detail.error`.
+
+Without a `wasmerror` listener, a failed component simply never renders and stays empty - so
+for any production usage, listen for it and render a fallback (e.g. a plain, non-virtualized
+list, or an error message) instead of leaving the user with a blank element:
+
+```js
+list.addEventListener('wasmerror', (e) => {
+  // e.g. render `list.data` as a plain, non-virtualized <ul> here.
+  console.error('runway-grid failed to initialize:', e.detail.error);
+});
+```
+
+## Security: `innerHTML` and XSS
+
+When a `template` function returns a `string`, it is assigned to the cell's `innerHTML` -
+**not** escaped or treated as plain text. If that string interpolates any value that can be
+influenced by an untrusted source (user-submitted text, data from a third-party API, URL
+parameters, etc.), this is a **cross-site scripting (XSS) vulnerability**: an attacker-controlled
+value such as `<img src=x onerror=alert(1)>` would execute as HTML/JS in the page.
+
+The [`demo/`](./demo) folder demonstrates the safe pattern: it defines a small `escapeHtml()`
+helper and runs every interpolated data-derived string (e.g. `${item}` in demo 1's baseline row)
+through it before interpolating it into a template string. When `rowItem` (or any derived value)
+may contain untrusted content, either:
+
+- Escape it before interpolating (e.g. replace `&`, `<`, `>`, `"`, `'` with their HTML entities), or
+- Avoid `innerHTML` entirely: build and return a `Node`/`DocumentFragment` instead, setting
+  untrusted text via `textContent` (which is never parsed as HTML).
 
 ## TypeScript
 
