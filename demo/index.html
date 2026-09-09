@@ -8,7 +8,7 @@
     // Applied synchronously (before first paint) to avoid a light/dark flash on load - the
     // full toggle logic lives in assets/shared.js, this just re-applies a stored override.
     (function () {
-      var stored = localStorage.getItem('runway-grid-demo-theme');
+      const stored = localStorage.getItem('runway-grid-demo-theme');
       if (stored === 'light' || stored === 'dark') {
         document.documentElement.setAttribute('data-theme', stored);
       }
@@ -86,7 +86,8 @@
   <p class="lede">
     Each example below is a standalone, runnable page - open one directly, or use the nav bar
     above. Every example page also lists the specific attributes/properties/methods it exercises,
-    and includes a "View source" section with the exact JavaScript used.
+    and has "Preview"/"Code" tabs above the demo - the Code tab shows the exact markup and script
+    used, syntax-highlighted with line numbers and a copy button.
   </p>
 
   <div class="card-grid">

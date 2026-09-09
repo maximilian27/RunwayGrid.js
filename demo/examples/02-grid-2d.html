@@ -6,7 +6,7 @@
   <title>2. 2D grid - runway-grid</title>
   <script>
     (function () {
-      var stored = localStorage.getItem('runway-grid-demo-theme');
+      const stored = localStorage.getItem('runway-grid-demo-theme');
       if (stored === 'light' || stored === 'dark') {
         document.documentElement.setAttribute('data-theme', stored);
       }
@@ -50,18 +50,33 @@
     demonstrate that row heights and column widths are tracked per-axis and combined.
   </p>
 
-  <div class="controls">
-    <button id="grid-top-left-btn">Top-Left (0,0)</button>
-    <button id="grid-bottom-right-btn">Bottom-Right (last,last)</button>
-  </div>
+  <div class="example-tabs">
+    <div class="tab-bar" role="tablist">
+      <button class="tab-btn active" type="button" data-tab="preview" role="tab" aria-selected="true">Preview</button>
+      <button class="tab-btn" type="button" data-tab="code" role="tab" aria-selected="false">Code</button>
+    </div>
+    <div class="tab-panel active" data-tab="preview" role="tabpanel">
+      <div class="controls">
+        <button id="grid-top-left-btn">Top-Left (0,0)</button>
+        <button id="grid-bottom-right-btn">Bottom-Right (last,last)</button>
+      </div>
 
-  <runway-grid
-      id="grid-demo"
-      orientation="both"
-      row-size="28"
-      col-size="120"
-      buffer-size="3"
-  ></runway-grid>
+      <runway-grid
+          id="grid-demo"
+          orientation="both"
+          row-size="28"
+          col-size="120"
+          buffer-size="3"
+      ></runway-grid>
+    </div>
+    <div class="tab-panel" data-tab="code" role="tabpanel">
+      <div class="code-toolbar">
+        <span class="code-filename">examples/02-grid-2d.html</span>
+        <button class="copy-btn" type="button">Copy</button>
+      </div>
+      <pre class="code-editor"><code class="code-block"></code></pre>
+    </div>
+  </div>
 
   <h2>API used in this example</h2>
   <table>
@@ -78,65 +93,20 @@
   </table>
 
   <p class="lede">
-    View this page's source (e.g. your browser's "View Page Source") for the full, runnable
-    script - every example on this site is a plain, standalone HTML file with an inline
+    Switch to the <strong>Code</strong> tab above for the exact markup and script behind this
+    example - every example on this site is a plain, standalone HTML file with an inline
     <code>&lt;script type="module"&gt;</code>.
   </p>
 </main>
 
 <script type="module" src="../assets/shared.js"></script>
 <script type="module">
-  import '../../src/runway-grid.js';
-
-  const gridDemo = document.getElementById('grid-demo');
-  const GRID_ROWS = 100000;
-  const GRID_COLS = 500;
-
-  // Column definitions (drives colCount = 500). Must be set before `data` so both
-  // axes are known when the registry is created.
-  gridDemo.columns = Array.from({ length: GRID_COLS }, (_, c) => `Col ${c}`);
-
-  // Row data - each row just needs to exist; actual cell content is computed from
-  // (rowIndex, colIndex) inside the template below.
-  const gridRows = Array.from({ length: GRID_ROWS }, (_, r) => ({ id: r }));
-
-  // Note: `runway-grid` renders cell content inside its own Shadow DOM, so
-  // page-level stylesheet classes (like the light-DOM `.list-item` class) never actually
-  // apply to it - only inline styles (and inherited properties) do. Each cell's box is
-  // individually absolutely-positioned to support independent row/column virtualization,
-  // so an explicit inline `width` matching `col-size` (120px here) is required, otherwise
-  // it shrinks-to-fit around its unstyled text content instead.
-  gridDemo.template = (rowItem, rowIndex, colIndex, rowCount, colCount) => {
-    // Make every 10th row much taller, and every 5th column much wider
-    const isTallRow = rowIndex % 10 === 0;
-    const isWideCol = colIndex % 5 === 0;
-
-    const height = isTallRow ? '150px' : '40px';
-    const width = isWideCol ? '300px' : '120px';
-
-    return `
-      <div style="box-sizing: border-box; width: ${width}; height: ${height}; padding: 8px; border: 1px solid var(--color-border); color: var(--color-text);">
-        R${rowIndex} x C${colIndex}
-      </div>
-    `;
-  };
-
-  gridDemo.data = gridRows;
-
-  document.getElementById('grid-top-left-btn').addEventListener('click', () => {
-    gridDemo.scrollToCell(0, 0);
-  });
-
-  document.getElementById('grid-bottom-right-btn').addEventListener('click', () => {
-    gridDemo.scrollToCell(GRID_ROWS - 1, GRID_COLS - 1);
-  });
-
-  gridDemo.addEventListener('rangechange', (e) => {
-    console.debug('Grid rendering range:', {
-      buffered: `rows ${e.buffered.startRow}-${e.buffered.endRow}, cols ${e.buffered.startCol}-${e.buffered.endCol}`,
-      viewport: `rows ${e.viewport.startRow}-${e.viewport.endRow}, cols ${e.viewport.startCol}-${e.viewport.endCol}`
-    });
-  });
+  // Feeds the Code tab the exact, unbundled source of ./02-grid-2d.js - see
+  // `registerExampleScript()` in assets/shared.js for why this indirection is needed.
+  import rawExampleSource from './02-grid-2d.js?raw';
+  import { registerExampleScript } from '../assets/shared.js';
+  registerExampleScript(rawExampleSource);
 </script>
+<script type="module" src="./02-grid-2d.js"></script>
 </body>
 </html>

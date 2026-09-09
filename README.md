@@ -46,7 +46,7 @@ import 'runway-grid';
 
 The `<runway-grid>` element must be given an explicit size (e.g. `height`/`width` via CSS) since it virtualizes its content within its own viewport.
 
-See the [`demo/`](./demo) folder for a full documentation site with complete, runnable examples of all seven usage patterns (vertical list, 2D grid, horizontal list, infinite scroll - both vertical and horizontal - with variable row/column sizes, and infinite scroll with a memory-capped sliding window - both vertical and horizontal), each on its own page under [`demo/examples/`](./demo/examples), plus an API reference and a system-based (light/dark) color theme. Open [`demo/index.html`](./demo/index.html) to browse it.
+See the [`demo/`](./demo) folder for a full documentation site with complete, runnable examples of all seven usage patterns (vertical list, 2D grid, horizontal list, infinite scroll - both vertical and horizontal - with variable row/column sizes, and infinite scroll with a memory-capped sliding window - both vertical and horizontal), each on its own page under [`demo/examples/`](./demo/examples), plus an API reference and a system-based (light/dark) color theme. Every example page has "Preview" and "Code" tabs - the Code tab shows the exact markup/script for that example, syntax-highlighted in an IDE-like viewer with line numbers and a copy button. Open [`demo/index.html`](./demo/index.html) to browse it.
 
 ### Browser support
 
