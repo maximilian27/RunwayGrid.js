@@ -58,6 +58,10 @@ fn update_size(sizes: &mut [f64], prefix_sums: &mut [f64], index: usize, new_siz
 struct AxisRange {
     buffered_start: usize,
     buffered_end: usize,
+    // Strict (unbuffered) bounds - the indices actually intersecting the visible pixels,
+    // i.e. `buffered_start`/`buffered_end` with the `buffer_size` padding removed.
+    viewport_start: usize,
+    viewport_end: usize,
     // Pixel offset (translate) between the buffered window's start and the current scroll
     // position on this axis.
     translate: f64,
@@ -69,7 +73,7 @@ struct AxisRange {
 fn resolve_axis(prefix_sums: &[f64], scroll: f64, viewport_size: f64, buffer_size: usize) -> AxisRange {
     let total = prefix_sums.len();
     if total == 0 {
-        return AxisRange { buffered_start: 0, buffered_end: 0, translate: 0.0 };
+        return AxisRange { buffered_start: 0, buffered_end: 0, viewport_start: 0, viewport_end: 0, translate: 0.0 };
     }
 
     let max_scroll = (total_of(prefix_sums) - viewport_size).max(0.0);
@@ -102,6 +106,8 @@ fn resolve_axis(prefix_sums: &[f64], scroll: f64, viewport_size: f64, buffer_siz
     AxisRange {
         buffered_start,
         buffered_end,
+        viewport_start: start_index,
+        viewport_end: end_index,
         translate: start_offset - clamped_scroll,
     }
 }
@@ -116,6 +122,13 @@ pub struct GridGeometryResult {
     pub end_row: usize,
     pub start_col: usize,
     pub end_col: usize,
+    // Strict (unbuffered) row/column bounds - only the indices whose pixels actually
+    // intersect the viewport, i.e. `start_row`/`end_row`/`start_col`/`end_col` without the
+    // `buffer_size` padding on either side.
+    pub viewport_start_row: usize,
+    pub viewport_end_row: usize,
+    pub viewport_start_col: usize,
+    pub viewport_end_col: usize,
     pub translate_x: f64,
     pub translate_y: f64,
 }
@@ -144,8 +157,94 @@ impl VirtualScrollRegistry {
         update_size(&mut self.row_heights, &mut self.row_prefix_sums, index, new_height)
     }
 
+    // Non-destructively grows the row axis by `count` rows, each starting at
+    // `default_size`. Continues `row_prefix_sums` from its last known cumulative
+    // value instead of rebuilding from scratch, so every previously auto-measured
+    // row height (and its resulting prefix sum) stays mathematically intact - this
+    // is what allows infinite-scroll style appends to happen without resetting the
+    // scroll position or discarding measured layout state.
+    pub fn append_rows(&mut self, count: usize, default_size: f64) {
+        let mut running_sum = total_of(&self.row_prefix_sums);
+        self.row_heights.reserve(count);
+        self.row_prefix_sums.reserve(count);
+        for _ in 0..count {
+            running_sum += default_size;
+            self.row_heights.push(default_size);
+            self.row_prefix_sums.push(running_sum);
+        }
+    }
+
+    // Non-destructively shrinks the row axis by removing the first `count` rows - a
+    // "sliding window" head-eviction, e.g. capping memory usage for an infinitely growing
+    // infinite-scroll list. Clamps `count` to the current row count to stay panic-free, then
+    // drains the removed slots from both `row_heights` and `row_prefix_sums` and re-bases
+    // every remaining prefix sum by subtracting the removed total height, so the remaining
+    // rows keep their exact relative offsets without needing a full rebuild. Returns the
+    // exact pixel height removed, so the caller (JS) can counter-scroll by that same amount
+    // and hide the mutation from the user.
+    pub fn remove_rows_from_head(&mut self, count: usize) -> f64 {
+        let count = count.min(self.row_heights.len());
+        if count == 0 {
+            return 0.0;
+        }
+
+        let height_delta = self.row_prefix_sums[count - 1];
+
+        self.row_heights.drain(0..count);
+        self.row_prefix_sums.drain(0..count);
+
+        // Rust slice optimization: Sequential memory mutation loops are auto-vectorized by LLVM.
+        for val in self.row_prefix_sums.iter_mut() {
+            *val -= height_delta;
+        }
+
+        height_delta
+    }
+
     pub fn update_col_width(&mut self, index: usize, new_width: f64) -> bool {
         update_size(&mut self.col_widths, &mut self.col_prefix_sums, index, new_width)
+    }
+
+    // Non-destructively grows the column axis by `count` columns, each starting at
+    // `default_size`. Mirrors `append_rows`: continues `col_prefix_sums` from its last
+    // known cumulative value instead of rebuilding from scratch, so every previously
+    // auto-measured column width (and its resulting prefix sum) stays mathematically
+    // intact - this is what allows infinite-scroll style appends to happen on the
+    // horizontal axis without resetting the scroll position or discarding measured
+    // layout state.
+    pub fn append_cols(&mut self, count: usize, default_size: f64) {
+        let mut running_sum = total_of(&self.col_prefix_sums);
+        self.col_widths.reserve(count);
+        self.col_prefix_sums.reserve(count);
+        for _ in 0..count {
+            running_sum += default_size;
+            self.col_widths.push(default_size);
+            self.col_prefix_sums.push(running_sum);
+        }
+    }
+
+    // Non-destructively shrinks the column axis by removing the first `count` columns.
+    // Mirrors `remove_rows_from_head`: clamps `count`, drains the removed slots from both
+    // `col_widths` and `col_prefix_sums`, then re-bases every remaining prefix sum by
+    // subtracting the removed total width. Returns the exact pixel width removed, so the
+    // caller (JS) can counter-scroll the horizontal axis by that same amount.
+    pub fn remove_cols_from_head(&mut self, count: usize) -> f64 {
+        let count = count.min(self.col_widths.len());
+        if count == 0 {
+            return 0.0;
+        }
+
+        let width_delta = self.col_prefix_sums[count - 1];
+
+        self.col_widths.drain(0..count);
+        self.col_prefix_sums.drain(0..count);
+
+        // Rust slice optimization: Sequential memory mutation loops are auto-vectorized by LLVM.
+        for val in self.col_prefix_sums.iter_mut() {
+            *val -= width_delta;
+        }
+
+        width_delta
     }
 
     pub fn get_total_height(&self) -> f64 {
@@ -187,18 +286,20 @@ impl VirtualScrollRegistry {
         enable_vertical: bool,
         enable_horizontal: bool,
     ) -> GridGeometryResult {
-        let (start_row, end_row, translate_y) = if enable_vertical && !self.row_heights.is_empty() {
+        let (start_row, end_row, viewport_start_row, viewport_end_row, translate_y) = if enable_vertical && !self.row_heights.is_empty() {
             let axis = resolve_axis(&self.row_prefix_sums, scroll_top, viewport_height, buffer_size);
-            (axis.buffered_start, axis.buffered_end, axis.translate)
+            (axis.buffered_start, axis.buffered_end, axis.viewport_start, axis.viewport_end, axis.translate)
         } else {
-            (0, self.row_heights.len().min(1), 0.0)
+            let fallback_end = self.row_heights.len().min(1);
+            (0, fallback_end, 0, fallback_end, 0.0)
         };
 
-        let (start_col, end_col, translate_x) = if enable_horizontal && !self.col_widths.is_empty() {
+        let (start_col, end_col, viewport_start_col, viewport_end_col, translate_x) = if enable_horizontal && !self.col_widths.is_empty() {
             let axis = resolve_axis(&self.col_prefix_sums, scroll_left, viewport_width, buffer_size);
-            (axis.buffered_start, axis.buffered_end, axis.translate)
+            (axis.buffered_start, axis.buffered_end, axis.viewport_start, axis.viewport_end, axis.translate)
         } else {
-            (0, self.col_widths.len().min(1), 0.0)
+            let fallback_end = self.col_widths.len().min(1);
+            (0, fallback_end, 0, fallback_end, 0.0)
         };
 
         GridGeometryResult {
@@ -206,6 +307,10 @@ impl VirtualScrollRegistry {
             end_row,
             start_col,
             end_col,
+            viewport_start_row,
+            viewport_end_row,
+            viewport_start_col,
+            viewport_end_col,
             translate_x,
             translate_y,
         }

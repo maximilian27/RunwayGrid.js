@@ -18,7 +18,7 @@ test.describe('runway-grid - reaching the true end (vertical axis)', () => {
     await page.evaluate(() => {
       window.__lastRange = null;
       document.getElementById('my-list').addEventListener('rangechange', (e) => {
-        window.__lastRange = e.detail;
+        window.__lastRange = { buffered: e.buffered, viewport: e.viewport };
       });
     });
 
@@ -32,7 +32,7 @@ test.describe('runway-grid - reaching the true end (vertical axis)', () => {
   async function expectLandedFullyAtEnd(page) {
     // The last buffered row must reach the true end of the dataset.
     await page.waitForFunction(
-        (total) => window.__lastRange && window.__lastRange.endRow === total,
+        (total) => window.__lastRange && window.__lastRange.buffered.endRow === total,
         TOTAL_ITEMS,
     );
 

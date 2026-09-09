@@ -1,8 +1,7 @@
 /**
- * Detail payload dispatched with the `rangechange` event, describing the
- * currently rendered row/column range.
+ * A single row/column range (start inclusive, end exclusive).
  */
-export interface RangeChangeDetail {
+export interface RangeChangeCoordinates {
   startRow: number;
   endRow: number;
   startCol: number;
@@ -12,14 +11,43 @@ export interface RangeChangeDetail {
 /**
  * `rangechange` is fired on a `RunwayGrid` element whenever the range of
  * rendered rows/columns changes (e.g. after scrolling, resizing, or a
- * `data`/`columns`/`template` update).
+ * `data`/`columns`/`template` update). `buffered`/`viewport` are exposed as
+ * two distinct coordinate groups directly on the event instance (not nested
+ * under `detail`).
  */
-export interface RangeChangeEvent extends CustomEvent<RangeChangeDetail> {
+export interface RangeChangeEvent extends Event {
   type: 'rangechange';
+  /**
+   * The buffered render range, including the off-screen `bufferSize` items on
+   * each side. Ideal for triggering infinite-scroll data fetches before the
+   * user hits the absolute bottom.
+   */
+  buffered: RangeChangeCoordinates;
+  /**
+   * The strict range excluding the buffer - only the indices actually
+   * intersecting the visible pixels on screen. Ideal for visibility tracking.
+   */
+  viewport: RangeChangeCoordinates;
+}
+
+/**
+ * `wasmerror` is fired on a `RunwayGrid` element if the embedded WASM engine fails to
+ * initialize (e.g. an unsupported browser, a Content-Security-Policy blocking
+ * instantiation of the `atob`-decoded binary, or a corrupt/incompatible build). The
+ * component never renders in this case - listen for this event to implement a fallback.
+ */
+export interface WasmErrorEvent extends Event {
+  type: 'wasmerror';
+  detail: { error: unknown };
 }
 
 /**
  * Renders the content of a single cell.
+ *
+ * **Security note:** returning a `string` assigns it via `innerHTML`, so any value
+ * interpolated into it is parsed as HTML, not text - this is an XSS surface. Escape/sanitize
+ * untrusted content (or return a `Node` and use text APIs like `textContent` instead) whenever
+ * `rowItem` may contain attacker-controlled data.
  *
  * @param rowItem  The row's data entry (the element of the `data` array at `rowIndex`).
  * @param rowIndex Zero-based row index of the cell being rendered.
@@ -43,6 +71,7 @@ export type RunwayGridTemplate = (
  * embedded directly into this module.
  *
  * @fires rangechange - Fired whenever the range of rendered rows/columns changes.
+ * @fires wasmerror - Fired if the embedded WASM engine fails to initialize; the component never renders in this case.
  */
 export declare class RunwayGrid extends HTMLElement {
   /**
@@ -73,10 +102,50 @@ export declare class RunwayGrid extends HTMLElement {
   readonly bufferSize: number;
 
   /**
+   * Whether initializing the shared embedded WASM engine has completed successfully.
+   * Remains `false` forever if initialization failed - see {@link RunwayGrid.wasmInitError}.
+   */
+  readonly wasmInitialized: boolean;
+
+  /**
+   * The error caught while initializing the shared embedded WASM engine, or `null` if
+   * initialization has not failed (either still pending, or completed successfully). Also
+   * exposed via the `wasmerror` event's `detail.error`.
+   */
+  readonly wasmInitError: unknown;
+
+  /**
    * The row data. Setting it (re)builds the internal layout registry and
    * resets the scroll position to the origin.
    */
   set data(rows: readonly unknown[]);
+
+  /**
+   * Non-destructively appends items to the existing data set, e.g. for
+   * infinite scroll pagination. Unlike setting `data`/`columns`, this does
+   * not rebuild the layout registry or reset the scroll position.
+   *
+   * For `orientation="horizontal"`, items are appended along the column
+   * axis (mirroring `columns`); for `orientation="vertical"`/`"both"`, items
+   * are appended along the row axis (mirroring `data`).
+   *
+   * @param newItems The rows (or, for `orientation="horizontal"`, columns) to append after the current data set.
+   */
+  appendData(newItems: readonly unknown[]): void;
+
+  /**
+   * Non-destructively drops the first `count` items from the existing data
+   * set, e.g. to cap memory usage ("sliding window") once an infinite-scroll
+   * list has grown past some limit. Counter-scrolls the viewport by the exact
+   * pixel amount removed, so the user never sees a jump.
+   *
+   * For `orientation="horizontal"`, items are removed from the column axis
+   * (mirroring `appendData`); for `orientation="vertical"`/`"both"`, items
+   * are removed from the row axis.
+   *
+   * @param count Number of items to remove from the head of the data set.
+   */
+  removeDataFromHead(count: number): void;
 
   /**
    * The column definitions, or a plain column count. Must be set before
@@ -115,6 +184,11 @@ export declare class RunwayGrid extends HTMLElement {
     options?: boolean | AddEventListenerOptions,
   ): void;
   addEventListener(
+    type: 'wasmerror',
+    listener: (this: RunwayGrid, ev: WasmErrorEvent) => unknown,
+    options?: boolean | AddEventListenerOptions,
+  ): void;
+  addEventListener(
     type: string,
     listener: EventListenerOrEventListenerObject,
     options?: boolean | AddEventListenerOptions,
@@ -131,6 +205,11 @@ export declare class RunwayGrid extends HTMLElement {
     options?: boolean | EventListenerOptions,
   ): void;
   removeEventListener(
+    type: 'wasmerror',
+    listener: (this: RunwayGrid, ev: WasmErrorEvent) => unknown,
+    options?: boolean | EventListenerOptions,
+  ): void;
+  removeEventListener(
     type: string,
     listener: EventListenerOrEventListenerObject,
     options?: boolean | EventListenerOptions,
@@ -144,5 +223,6 @@ declare global {
 
   interface HTMLElementEventMap {
     rangechange: RangeChangeEvent;
+    wasmerror: WasmErrorEvent;
   }
 }

@@ -33,10 +33,6 @@ function base64ToUint8Array(base64) {
   return bytes;
 }
 
-if ('history' in window && 'scrollRestoration' in window.history) {
-  window.history.scrollRestoration = 'manual';
-}
-
 /**
  * Cached promise for the WASM module initialization, shared across every
  * `RunwayGrid` instance so the engine is only decoded/instantiated once per page.
@@ -108,8 +104,17 @@ COMPONENT_TEMPLATE.innerHTML = `
  * The `<runway-grid>` custom element. See the module doc for an overview.
  *
  * @fires rangechange - Fired whenever the range of rendered rows/columns changes
- *   (e.g. after scrolling, resizing, or a `data`/`columns`/`template` update), with
- *   `detail: { startRow, endRow, startCol, endCol }`.
+ *   (e.g. after scrolling, resizing, or a `data`/`columns`/`template` update), exposing
+ *   `buffered` and `viewport` directly on the event (not nested under `detail`), where each
+ *   is `{ startRow, endRow, startCol, endCol }`. `buffered` includes the off-screen
+ *   `bufferSize` items on each side (ideal for triggering infinite scroll data fetches);
+ *   `viewport` is the strict range that excludes the buffer, i.e. only the indices
+ *   currently intersecting the visible pixels on screen.
+ * @fires wasmerror - Fired if the embedded WASM engine fails to initialize (e.g. an
+ *   unsupported browser, a Content-Security-Policy blocking instantiation of the
+ *   `atob`-decoded binary, or a corrupt/incompatible build), with the caught error exposed
+ *   as `e.detail.error`. The component never renders in this case - listen for this event to
+ *   implement a fallback (e.g. rendering a plain, non-virtualized list instead).
  */
 export class RunwayGrid extends HTMLElement {
   constructor() {
@@ -139,6 +144,7 @@ export class RunwayGrid extends HTMLElement {
     this.registry = null;
 
     this.wasmInitialized = false;
+    this.wasmInitError = null;
     this._initialLayoutDone = false;
     this._isUpdatingDOM = false;
     this._isProgrammaticScroll = false;
@@ -208,10 +214,24 @@ export class RunwayGrid extends HTMLElement {
    * Awaits the shared WASM engine initialization and, once ready, builds the
    * layout registry if `data`/`columns` were already assigned before the
    * engine finished loading.
+   *
+   * If the shared WASM engine fails to initialize (e.g. an unsupported browser, a
+   * Content-Security-Policy blocking instantiation of the `atob`-decoded binary, or a
+   * corrupt/incompatible build), the rejection is caught here so it never surfaces as an
+   * unhandled promise rejection: `wasmInitError` is set and a `wasmerror` event is
+   * dispatched, giving consumers a chance to react/render a fallback instead of the
+   * component just silently never rendering.
    * @returns {Promise<void>}
    */
   async initWasm() {
-    await ensureWasmInitialized();
+    try {
+      await ensureWasmInitialized();
+    } catch (error) {
+      this.wasmInitError = error;
+      console.error('runway-grid: failed to initialize the embedded WASM engine; the component will not render.', error);
+      this.dispatchEvent(new CustomEvent('wasmerror', { detail: { error } }));
+      return;
+    }
     this.wasmInitialized = true;
     if (this.rows.length || this._colCount > 1) this.setupRegistry();
   }
@@ -531,14 +551,29 @@ export class RunwayGrid extends HTMLElement {
         this.horizontalEnabled,
     );
 
-    const { translate_x, translate_y, start_row, end_row, start_col, end_col } = geometry;
+    const {
+      translate_x, translate_y, start_row, end_row, start_col, end_col,
+      viewport_start_row, viewport_end_row, viewport_start_col, viewport_end_col,
+    } = geometry;
     geometry.free();
 
     const roundedTranslateX = Math.round(translate_x);
     const roundedTranslateY = Math.round(translate_y);
 
     this.wrapper.style.transform = `translate3d(${roundedTranslateX}px, ${roundedTranslateY}px, 0)`;
-    this.dispatchEvent(new CustomEvent('rangechange', { detail: { startRow: start_row, endRow: end_row, startCol: start_col, endCol: end_col } }));
+
+    // Note: `buffered`/`viewport` are attached directly on the event instance (rather than
+    // nested under `detail`) since plain properties passed to the `CustomEvent` constructor
+    // are otherwise silently dropped - only `detail` is a recognized `CustomEventInit` member.
+    /** @type {import('./runway-grid.d.ts').RangeChangeEvent} */
+    const rangeChangeEvent = /** @type {any} */ (new CustomEvent('rangechange'));
+    // Buffered range (includes off-screen `bufferSize` items on each side). Ideal for
+    // triggering infinite-scroll data fetches before the user hits the absolute bottom.
+    rangeChangeEvent.buffered = { startRow: start_row, endRow: end_row, startCol: start_col, endCol: end_col };
+    // Strict range excluding the buffer - only the indices actually intersecting the
+    // visible pixels on screen. Ideal for visibility tracking (e.g. impression logging).
+    rangeChangeEvent.viewport = { startRow: viewport_start_row, endRow: viewport_end_row, startCol: viewport_start_col, endCol: viewport_end_col };
+    this.dispatchEvent(rangeChangeEvent);
     this.applyChanges(start_row, end_row, start_col, end_col, translate_y, roundedTranslateY, translate_x, roundedTranslateX);
   }
 
@@ -788,6 +823,89 @@ export class RunwayGrid extends HTMLElement {
   set data(newRows) { this.rows = newRows || []; this._virtualScrollTop = 0; this._virtualScrollLeft = 0; this.setupRegistry(); }
 
   /**
+   * Non-destructively appends items to the existing data set, e.g. for infinite
+   * scroll pagination. Unlike {@link RunwayGrid#data}/{@link RunwayGrid#columns},
+   * this does not rebuild the WASM registry or reset the scroll position: new
+   * default-sized rows/columns are pushed onto the registry's corresponding axis
+   * (preserving every previously auto-measured row height/column width), the
+   * spacer is resized so the native scrollbar track immediately reflects the new
+   * virtual size, and the viewport stays locked at the user's current read position.
+   *
+   * For `orientation="horizontal"`, items are appended along the column axis
+   * (mirroring {@link RunwayGrid#columns}, which is what drives `colCount` for a
+   * horizontal list); for `orientation="vertical"`/`"both"`, items are appended
+   * along the row axis (mirroring {@link RunwayGrid#data}).
+   *
+   * @param {Array<unknown>} newItems The rows (or, for `orientation="horizontal"`, columns) to append after the current data set.
+   */
+  appendData(newItems) {
+    if (!newItems || !newItems.length) return;
+    const count = newItems.length;
+
+    if (this.orientation === 'horizontal') {
+      this.columnsData = (this.columnsData || []).concat(newItems);
+      this._colCount = this.columnsData.length;
+
+      if (!this.registry) { this.setupRegistry(); return; }
+
+      this.registry.append_cols(count, this.colSize);
+    } else {
+      this.rows = this.rows.concat(newItems);
+
+      if (!this.registry) { this.setupRegistry(); return; }
+
+      this.registry.append_rows(count, this.rowSize);
+    }
+
+    this.updateSpacer();
+    this.calculateIndices();
+  }
+
+  /**
+   * Non-destructively drops the first `count` items from the existing data set,
+   * e.g. to cap memory usage ("sliding window") once an infinite-scroll list has
+   * grown past some limit. Splices the removed items out of the JS-side array,
+   * removes the matching slots from the WASM registry, and counter-scrolls the
+   * viewport by the exact pixel amount that vanished - so the user never sees a
+   * jump, even though the underlying array just shrank.
+   *
+   * For `orientation="horizontal"`, items are removed from the column axis
+   * (mirroring {@link RunwayGrid#appendData}); for `orientation="vertical"`/`"both"`,
+   * items are removed from the row axis. The `_virtualScrollTop`/`_virtualScrollLeft`
+   * compensation, `updateSpacer()`, `syncTrackFromVirtual()`, and `calculateIndices()`
+   * all happen synchronously in this same call, so the browser repaints the shifted
+   * grid in a single frame with no visible jump.
+   *
+   * @param {number} count Number of items to remove from the head of the data set.
+   */
+  removeDataFromHead(count) {
+    if (!count || count <= 0 || !this.registry) return;
+
+    if (this.orientation === 'horizontal') {
+      const removeCount = Math.min(count, this.columnsData ? this.columnsData.length : 0);
+      if (removeCount <= 0) return;
+
+      this.columnsData = this.columnsData.slice(removeCount);
+      this._colCount = this.columnsData.length;
+
+      const widthDelta = this.registry.remove_cols_from_head(removeCount);
+      this._virtualScrollLeft = Math.max(0, this._virtualScrollLeft - widthDelta);
+    } else {
+      const removeCount = Math.min(count, this.rows.length);
+      if (removeCount <= 0) return;
+
+      this.rows = this.rows.slice(removeCount);
+
+      const heightDelta = this.registry.remove_rows_from_head(removeCount);
+      this._virtualScrollTop = Math.max(0, this._virtualScrollTop - heightDelta);
+    }
+
+    this.updateSpacer();
+    this.syncTrackFromVirtual();
+    this.calculateIndices();
+  }
+
+  /**
    * Sets the column definitions, or a plain column count. Must be set before
    * `data` when using `orientation="horizontal"` or `orientation="both"`.
    * @param {Array<unknown>|number} colsOrCount An array of column definitions, or a column count.
@@ -799,6 +917,13 @@ export class RunwayGrid extends HTMLElement {
 
   /**
    * Sets the cell rendering function, then immediately re-renders.
+   *
+   * **Security note:** a returned `string` is assigned via `innerHTML`, so any value
+   * interpolated into it (e.g. `rowItem` fields sourced from user input) is parsed as HTML,
+   * not text - this is an XSS surface. Escape/sanitize untrusted content before interpolating
+   * it (or build a `Node`/`DocumentFragment` and use text APIs like `textContent` instead of
+   * returning a raw HTML string) whenever `rowItem` may contain attacker-controlled data.
+   *
    * @param {(rowItem: unknown, rowIndex: number, colIndex: number, rowCount: number, colCount: number) => (string|Node|null|undefined)} renderFn
    *   Renders a single cell's content: return an HTML string (assigned via `innerHTML`) or a `Node` (appended as-is).
    */

@@ -23,7 +23,7 @@ test.describe('runway-grid - 2D grid (independent vertical + horizontal panning)
     await page.evaluate(() => {
       window.__lastGridRange = null;
       document.getElementById('grid-demo').addEventListener('rangechange', (e) => {
-        window.__lastGridRange = e.detail;
+        window.__lastGridRange = { buffered: e.buffered, viewport: e.viewport };
       });
       document.getElementById('grid-demo').calculateIndices();
     });
@@ -42,7 +42,7 @@ test.describe('runway-grid - 2D grid (independent vertical + horizontal panning)
   });
 
   test('panning the horizontal axis does not move the vertical axis, and vice versa', async ({ page }) => {
-    const initialRange = await page.evaluate(() => window.__lastGridRange);
+    const initialRange = await page.evaluate(() => window.__lastGridRange.buffered);
     expect(initialRange.startRow).toBe(0);
     expect(initialRange.startCol).toBe(0);
 
@@ -53,8 +53,8 @@ test.describe('runway-grid - 2D grid (independent vertical + horizontal panning)
       track.scrollLeft = Math.floor(track.scrollWidth / 2);
     });
 
-    await page.waitForFunction(() => window.__lastGridRange && window.__lastGridRange.startCol > 0);
-    const afterHorizontalPan = await page.evaluate(() => window.__lastGridRange);
+    await page.waitForFunction(() => window.__lastGridRange && window.__lastGridRange.buffered.startCol > 0);
+    const afterHorizontalPan = await page.evaluate(() => window.__lastGridRange.buffered);
     expect(afterHorizontalPan.startRow).toBe(0);
     expect(afterHorizontalPan.startCol).toBeGreaterThan(0);
 
@@ -66,8 +66,8 @@ test.describe('runway-grid - 2D grid (independent vertical + horizontal panning)
       track.scrollTop = Math.floor(track.scrollHeight / 2);
     });
 
-    await page.waitForFunction(() => window.__lastGridRange && window.__lastGridRange.startRow > 0);
-    const afterVerticalPan = await page.evaluate(() => window.__lastGridRange);
+    await page.waitForFunction(() => window.__lastGridRange && window.__lastGridRange.buffered.startRow > 0);
+    const afterVerticalPan = await page.evaluate(() => window.__lastGridRange.buffered);
     expect(afterVerticalPan.startRow).toBeGreaterThan(0);
     expect(afterVerticalPan.startCol).toBe(afterHorizontalPan.startCol);
   });
@@ -77,8 +77,8 @@ test.describe('runway-grid - 2D grid (independent vertical + horizontal panning)
 
     await page.waitForFunction(
         ({ rows, cols }) => window.__lastGridRange
-            && window.__lastGridRange.endRow === rows
-            && window.__lastGridRange.endCol === cols,
+            && window.__lastGridRange.buffered.endRow === rows
+            && window.__lastGridRange.buffered.endCol === cols,
         { rows: GRID_ROWS, cols: GRID_COLS },
     );
 
@@ -116,7 +116,7 @@ test.describe('runway-grid - 2D grid (independent vertical + horizontal panning)
     });
 
     await page.waitForFunction(
-        (cols) => window.__lastGridRange && window.__lastGridRange.endCol === cols,
+        (cols) => window.__lastGridRange && window.__lastGridRange.buffered.endCol === cols,
         GRID_COLS,
     );
 
