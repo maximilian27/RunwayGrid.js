@@ -33,10 +33,6 @@ function base64ToUint8Array(base64) {
   return bytes;
 }
 
-if ('history' in window && 'scrollRestoration' in window.history) {
-  window.history.scrollRestoration = 'manual';
-}
-
 /**
  * Cached promise for the WASM module initialization, shared across every
  * `RunwayGrid` instance so the engine is only decoded/instantiated once per page.
