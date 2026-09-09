@@ -846,6 +846,50 @@ export class RunwayGrid extends HTMLElement {
   }
 
   /**
+   * Non-destructively drops the first `count` items from the existing data set,
+   * e.g. to cap memory usage ("sliding window") once an infinite-scroll list has
+   * grown past some limit. Splices the removed items out of the JS-side array,
+   * removes the matching slots from the WASM registry, and counter-scrolls the
+   * viewport by the exact pixel amount that vanished - so the user never sees a
+   * jump, even though the underlying array just shrank.
+   *
+   * For `orientation="horizontal"`, items are removed from the column axis
+   * (mirroring {@link RunwayGrid#appendData}); for `orientation="vertical"`/`"both"`,
+   * items are removed from the row axis. The `_virtualScrollTop`/`_virtualScrollLeft`
+   * compensation, `updateSpacer()`, `syncTrackFromVirtual()`, and `calculateIndices()`
+   * all happen synchronously in this same call, so the browser repaints the shifted
+   * grid in a single frame with no visible jump.
+   *
+   * @param {number} count Number of items to remove from the head of the data set.
+   */
+  removeDataFromHead(count) {
+    if (!count || count <= 0 || !this.registry) return;
+
+    if (this.orientation === 'horizontal') {
+      const removeCount = Math.min(count, this.columnsData ? this.columnsData.length : 0);
+      if (removeCount <= 0) return;
+
+      this.columnsData = this.columnsData.slice(removeCount);
+      this._colCount = this.columnsData.length;
+
+      const widthDelta = this.registry.remove_cols_from_head(removeCount);
+      this._virtualScrollLeft = Math.max(0, this._virtualScrollLeft - widthDelta);
+    } else {
+      const removeCount = Math.min(count, this.rows.length);
+      if (removeCount <= 0) return;
+
+      this.rows = this.rows.slice(removeCount);
+
+      const heightDelta = this.registry.remove_rows_from_head(removeCount);
+      this._virtualScrollTop = Math.max(0, this._virtualScrollTop - heightDelta);
+    }
+
+    this.updateSpacer();
+    this.syncTrackFromVirtual();
+    this.calculateIndices();
+  }
+
+  /**
    * Sets the column definitions, or a plain column count. Must be set before
    * `data` when using `orientation="horizontal"` or `orientation="both"`.
    * @param {Array<unknown>|number} colsOrCount An array of column definitions, or a column count.

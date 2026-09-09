@@ -27,6 +27,14 @@
       height: 90px;
       width: 700px;
     }
+    #sliding-list {
+      height: 400px;
+      width: 500px;
+    }
+    #sliding-h-list {
+      height: 90px;
+      width: 700px;
+    }
     .list-item {
       padding: 0 10px;
       line-height: 20px; /* Must match row-size attribute */
@@ -119,6 +127,45 @@
 
 <runway-grid
     id="infinite-h-list"
+    orientation="horizontal"
+    col-size="120"
+    buffer-size="5"
+></runway-grid>
+
+<h2>6. Sliding window / infinite scroll (vertical, memory-capped)</h2>
+<p style="margin: 0 0 8px; font-size: 13px; color: #666; max-width: 500px;">
+  Combines infinite loading with a hard cap: once a new page is appended via
+  <code>appendData()</code>, if the loaded row count exceeds the cap, the oldest rows are
+  pruned from the top via <code>removeDataFromHead()</code>. The viewport is counter-scrolled
+  by the exact removed pixel height in the same frame, so scrolling stays perfectly smooth
+  even though the array (and the WASM vectors backing it) never grows past the cap - memory
+  usage stays flat forever, no matter how far down the user scrolls.
+</p>
+<div class="controls">
+  <span id="sliding-status" style="font-size: 13px; color: #666;">Loaded 0 items</span>
+</div>
+
+<runway-grid
+    id="sliding-list"
+    orientation="vertical"
+    row-size="70"
+    buffer-size="5"
+></runway-grid>
+
+<h2>7. Sliding window / infinite scroll (horizontal, memory-capped)</h2>
+<p style="margin: 0 0 8px; font-size: 13px; color: #666; max-width: 700px;">
+  Same idea as demo 6, but along the column axis: once a new page is appended via
+  <code>appendData()</code>, columns beyond the cap are pruned from the left via
+  <code>removeDataFromHead()</code>, which counter-scrolls the horizontal axis so nothing
+  jumps. The <code>columnsData</code> array (and the WASM column vectors) never grows past
+  the cap, keeping memory flat during infinite horizontal scrolling.
+</p>
+<div class="controls">
+  <span id="sliding-h-status" style="font-size: 13px; color: #666;">Loaded 0 items</span>
+</div>
+
+<runway-grid
+    id="sliding-h-list"
     orientation="horizontal"
     col-size="120"
     buffer-size="5"
@@ -496,6 +543,198 @@
     const loadedCount = infiniteHList.columnsData ? infiniteHList.columnsData.length : 0;
     if (e.buffered.endCol >= loadedCount - INFINITE_H_FETCH_THRESHOLD) {
       loadMoreInfiniteHData();
+    }
+  });
+
+  // ---------------------------------------------------------------------
+  // 6. Sliding window demo - vertical list, memory-capped infinite scroll. Mirrors
+  //    demo 4 (fetch-on-buffered-threshold via appendData()), but immediately after
+  //    each append, prunes the oldest rows from the head via removeDataFromHead() so
+  //    the array (and the WASM row vectors backing it) never grows past a hard cap -
+  //    the user can keep scrolling down forever without memory ever growing.
+  // ---------------------------------------------------------------------
+  const slidingList = document.getElementById('sliding-list');
+  const slidingStatus = document.getElementById('sliding-status');
+
+  // Number of rows fetched per simulated "page".
+  const SLIDING_PAGE_SIZE = 100;
+  // Hard cap on how many rows may be loaded at once - once exceeded, the oldest rows are
+  // pruned from the head so the array (and WASM vectors) never grow past this size.
+  const SLIDING_MAX_ROWS = 1000;
+  // How many rows of runway may still be left in the buffered range before the next page
+  // is requested, same idea as demo 4's threshold.
+  const SLIDING_FETCH_THRESHOLD = 30;
+
+  let slidingFetching = false;
+  // Total rows ever fetched from the "server" - keeps growing forever, even though the
+  // loaded `rows` array itself is capped at SLIDING_MAX_ROWS. Used as the fetch offset (so
+  // every row still gets a unique, ever-increasing absolute index) and to display progress.
+  let slidingTotalFetched = 0;
+
+  // Simulates a paginated backend endpoint, same shape as demo 4's.
+  function fetchSlidingPage(offset, limit) {
+    return new Promise((resolve) => {
+      setTimeout(() => {
+        const page = Array.from({ length: limit }, (_, i) => {
+          const index = offset + i;
+          return { index, lines: 1 + (index % 4) }; // 1-4 lines of body text -> variable height
+        });
+        resolve(page);
+      }, 400);
+    });
+  }
+
+  function renderSlidingStatus() {
+    const suffix = slidingFetching ? ' - fetching more…' : '';
+    slidingStatus.textContent =
+        `Loaded ${slidingList.rows.length} of max ${SLIDING_MAX_ROWS} items (${slidingTotalFetched} fetched total)${suffix}`;
+  }
+
+  // Fetches the next page, appends it via appendData(), then immediately prunes the head
+  // if the cap was exceeded. Both steps happen before renderSlidingStatus() reads back
+  // rows.length, so the displayed count is always the post-prune, capped size.
+  async function loadMoreSlidingData() {
+    if (slidingFetching) return;
+    slidingFetching = true;
+    renderSlidingStatus();
+
+    const page = await fetchSlidingPage(slidingTotalFetched, SLIDING_PAGE_SIZE);
+    slidingTotalFetched += page.length;
+
+    slidingFetching = false;
+    slidingList.appendData(page);
+
+    // Immediately after appending, cap the array at SLIDING_MAX_ROWS by dropping the
+    // oldest rows from the top - removeDataFromHead() counter-scrolls the viewport by the
+    // exact pixel height removed, so this is completely invisible to the user.
+    if (slidingList.rowCount > SLIDING_MAX_ROWS) {
+      slidingList.removeDataFromHead(slidingList.rowCount - SLIDING_MAX_ROWS);
+    }
+
+    renderSlidingStatus();
+  }
+
+  // Signature: (rowItem, rowIndex, colIndex, rowCount, colCount). `rowIndex` is the row's
+  // *local* array position, which keeps shifting down as older rows are pruned from the
+  // head - the stable absolute row number instead comes from the item's own `index`.
+  slidingList.template = (item) => {
+    const paragraph = 'Simulated content fetched from the server. '.repeat(item.lines);
+    const hue = (item.index * 47) % 360;
+
+    return `
+      <div style="box-sizing: border-box; padding: 12px; display: flex; flex-direction: column; gap: 6px; border-bottom: 1px solid #eee; background: ${item.index % 2 === 0 ? '#fff' : '#fafafa'};">
+        <strong style="color: hsl(${hue}, 65%, 40%);">Row ${item.index}</strong>
+        <p style="margin: 0; font-size: 13px; color: #555; line-height: 1.4;">${paragraph}</p>
+      </div>
+    `;
+  };
+
+  // Kick off with the first page.
+  loadMoreSlidingData();
+
+  slidingList.addEventListener('rangechange', (e) => {
+    renderSlidingStatus();
+    // Fetch the next page as soon as the *buffered* (off-screen) range gets close to the
+    // end of what's currently loaded - same trigger as demo 4, just now paired with the
+    // head-pruning above so the loaded set never grows past SLIDING_MAX_ROWS.
+    if (e.buffered.endRow >= slidingList.rows.length - SLIDING_FETCH_THRESHOLD) {
+      loadMoreSlidingData();
+    }
+  });
+
+  // ---------------------------------------------------------------------
+  // 7. Sliding window demo - horizontal list, memory-capped infinite scroll. Mirrors
+  //    demo 6, but along the column axis: appendData() grows columnsData, and once the
+  //    cap is exceeded, removeDataFromHead() prunes the oldest columns from the left.
+  // ---------------------------------------------------------------------
+  const slidingHList = document.getElementById('sliding-h-list');
+  const slidingHStatus = document.getElementById('sliding-h-status');
+
+  // Number of items fetched per simulated "page".
+  const SLIDING_H_PAGE_SIZE = 100;
+  // Hard cap on how many columns may be loaded at once - once exceeded, the oldest columns
+  // are pruned from the head so columnsData (and the WASM column vectors) never grow past
+  // this size.
+  const SLIDING_H_MAX_COLS = 1000;
+  // How many columns of runway may still be left in the buffered range before the next page
+  // is requested, same idea as demo 5's threshold.
+  const SLIDING_H_FETCH_THRESHOLD = 30;
+
+  let slidingHFetching = false;
+  // Total items ever fetched from the "server" - keeps growing forever, even though the
+  // loaded `columnsData` array itself is capped at SLIDING_H_MAX_COLS.
+  let slidingHTotalFetched = 0;
+
+  // Simulates a paginated backend endpoint, same shape as demo 5's.
+  function fetchSlidingHPage(offset, limit) {
+    return new Promise((resolve) => {
+      setTimeout(() => {
+        const page = Array.from({ length: limit }, (_, i) => {
+          const index = offset + i;
+          return { index, widthFactor: 1 + (index % 4) }; // 1-4x label repeats -> variable width
+        });
+        resolve(page);
+      }, 400);
+    });
+  }
+
+  function renderSlidingHStatus() {
+    const loadedCount = slidingHList.columnsData ? slidingHList.columnsData.length : 0;
+    const suffix = slidingHFetching ? ' - fetching more…' : '';
+    slidingHStatus.textContent =
+        `Loaded ${loadedCount} of max ${SLIDING_H_MAX_COLS} items (${slidingHTotalFetched} fetched total)${suffix}`;
+  }
+
+  // Fetches the next page, appends it via appendData(), then immediately prunes the head
+  // if the cap was exceeded, mirroring loadMoreSlidingData() but along the column axis.
+  async function loadMoreSlidingHData() {
+    if (slidingHFetching) return;
+    slidingHFetching = true;
+    renderSlidingHStatus();
+
+    const page = await fetchSlidingHPage(slidingHTotalFetched, SLIDING_H_PAGE_SIZE);
+    slidingHTotalFetched += page.length;
+
+    slidingHFetching = false;
+    slidingHList.appendData(page);
+
+    // Immediately after appending, cap columnsData at SLIDING_H_MAX_COLS by dropping the
+    // oldest columns from the left - removeDataFromHead() counter-scrolls the horizontal
+    // axis by the exact pixel width removed, so this is completely invisible to the user.
+    if (slidingHList.colCount > SLIDING_H_MAX_COLS) {
+      slidingHList.removeDataFromHead(slidingHList.colCount - SLIDING_H_MAX_COLS);
+    }
+
+    renderSlidingHStatus();
+  }
+
+  // Signature: (rowItem, rowIndex, colIndex, rowCount, colCount). `colIndex` is the
+  // column's *local* array position, which keeps shifting as older columns are pruned
+  // from the head - the stable absolute column number instead comes from the entry's own
+  // `index`.
+  slidingHList.template = (rowItem, rowIndex, colIndex) => {
+    const entry = slidingHList.columnsData[colIndex];
+    const hue = (entry.index * 47) % 360;
+    const label = 'Item '.repeat(entry.widthFactor) + `#${entry.index}`;
+
+    return `
+      <div style="box-sizing: border-box; height: 100%; padding: 0 16px; display: flex; align-items: center; white-space: nowrap; border-right: 1px solid #eee; background: ${entry.index % 2 === 0 ? '#fff' : '#fafafa'};">
+        <strong style="color: hsl(${hue}, 65%, 40%);">${label}</strong>
+      </div>
+    `;
+  };
+
+  // Kick off with the first page.
+  loadMoreSlidingHData();
+
+  slidingHList.addEventListener('rangechange', (e) => {
+    renderSlidingHStatus();
+    // Fetch the next page as soon as the *buffered* (off-screen) range gets close to the
+    // end of what's currently loaded - same trigger as demo 5, just now paired with the
+    // head-pruning above so the loaded set never grows past SLIDING_H_MAX_COLS.
+    const loadedCount = slidingHList.columnsData ? slidingHList.columnsData.length : 0;
+    if (e.buffered.endCol >= loadedCount - SLIDING_H_FETCH_THRESHOLD) {
+      loadMoreSlidingHData();
     }
   });
 </script>

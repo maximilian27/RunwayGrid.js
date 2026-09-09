@@ -39,7 +39,7 @@ import 'runway-grid';
 
 The `<runway-grid>` element must be given an explicit size (e.g. `height`/`width` via CSS) since it virtualizes its content within its own viewport.
 
-See the [`demo/`](./demo) folder for complete, runnable examples of all five usage patterns (vertical list, 2D grid, horizontal list, and infinite scroll - both vertical and horizontal - with variable row/column sizes).
+See the [`demo/`](./demo) folder for complete, runnable examples of all seven usage patterns (vertical list, 2D grid, horizontal list, infinite scroll - both vertical and horizontal - with variable row/column sizes, and infinite scroll with a memory-capped sliding window - both vertical and horizontal).
 
 ## Attributes
 
@@ -65,6 +65,7 @@ See the [`demo/`](./demo) folder for complete, runnable examples of all five usa
 | `scrollToCell(rowIndex, colIndex)`  | Scrolls so that the given row/column cell is visible, snapping precisely.                          |
 | `scrollToIndex(index)`              | Shorthand for `scrollToCell(index, 0)`, for single-axis lists.                                     |
 | `appendData(newItems)`              | Non-destructively appends rows (or columns, for `orientation="horizontal"`), e.g. for infinite scroll, without resetting the scroll position. |
+| `removeDataFromHead(count)`         | Non-destructively drops the first `count` rows (or columns, for `orientation="horizontal"`), e.g. to cap memory usage for a "sliding window" list, counter-scrolling so nothing jumps. |
 
 ## Events
 

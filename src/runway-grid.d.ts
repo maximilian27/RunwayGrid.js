@@ -104,6 +104,20 @@ export declare class RunwayGrid extends HTMLElement {
   appendData(newItems: readonly unknown[]): void;
 
   /**
+   * Non-destructively drops the first `count` items from the existing data
+   * set, e.g. to cap memory usage ("sliding window") once an infinite-scroll
+   * list has grown past some limit. Counter-scrolls the viewport by the exact
+   * pixel amount removed, so the user never sees a jump.
+   *
+   * For `orientation="horizontal"`, items are removed from the column axis
+   * (mirroring `appendData`); for `orientation="vertical"`/`"both"`, items
+   * are removed from the row axis.
+   *
+   * @param count Number of items to remove from the head of the data set.
+   */
+  removeDataFromHead(count: number): void;
+
+  /**
    * The column definitions, or a plain column count. Must be set before
    * `data` when using `orientation="horizontal"` or `orientation="both"`.
    */

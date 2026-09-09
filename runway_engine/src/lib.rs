@@ -174,6 +174,33 @@ impl VirtualScrollRegistry {
         }
     }
 
+    // Non-destructively shrinks the row axis by removing the first `count` rows - a
+    // "sliding window" head-eviction, e.g. capping memory usage for an infinitely growing
+    // infinite-scroll list. Clamps `count` to the current row count to stay panic-free, then
+    // drains the removed slots from both `row_heights` and `row_prefix_sums` and re-bases
+    // every remaining prefix sum by subtracting the removed total height, so the remaining
+    // rows keep their exact relative offsets without needing a full rebuild. Returns the
+    // exact pixel height removed, so the caller (JS) can counter-scroll by that same amount
+    // and hide the mutation from the user.
+    pub fn remove_rows_from_head(&mut self, count: usize) -> f64 {
+        let count = count.min(self.row_heights.len());
+        if count == 0 {
+            return 0.0;
+        }
+
+        let height_delta = self.row_prefix_sums[count - 1];
+
+        self.row_heights.drain(0..count);
+        self.row_prefix_sums.drain(0..count);
+
+        // Rust slice optimization: Sequential memory mutation loops are auto-vectorized by LLVM.
+        for val in self.row_prefix_sums.iter_mut() {
+            *val -= height_delta;
+        }
+
+        height_delta
+    }
+
     pub fn update_col_width(&mut self, index: usize, new_width: f64) -> bool {
         update_size(&mut self.col_widths, &mut self.col_prefix_sums, index, new_width)
     }
@@ -194,6 +221,30 @@ impl VirtualScrollRegistry {
             self.col_widths.push(default_size);
             self.col_prefix_sums.push(running_sum);
         }
+    }
+
+    // Non-destructively shrinks the column axis by removing the first `count` columns.
+    // Mirrors `remove_rows_from_head`: clamps `count`, drains the removed slots from both
+    // `col_widths` and `col_prefix_sums`, then re-bases every remaining prefix sum by
+    // subtracting the removed total width. Returns the exact pixel width removed, so the
+    // caller (JS) can counter-scroll the horizontal axis by that same amount.
+    pub fn remove_cols_from_head(&mut self, count: usize) -> f64 {
+        let count = count.min(self.col_widths.len());
+        if count == 0 {
+            return 0.0;
+        }
+
+        let width_delta = self.col_prefix_sums[count - 1];
+
+        self.col_widths.drain(0..count);
+        self.col_prefix_sums.drain(0..count);
+
+        // Rust slice optimization: Sequential memory mutation loops are auto-vectorized by LLVM.
+        for val in self.col_prefix_sums.iter_mut() {
+            *val -= width_delta;
+        }
+
+        width_delta
     }
 
     pub fn get_total_height(&self) -> f64 {
