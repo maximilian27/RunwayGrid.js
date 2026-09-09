@@ -19,6 +19,14 @@
       height: 60px;
       width: 700px;
     }
+    #infinite-list {
+      height: 400px;
+      width: 500px;
+    }
+    #infinite-h-list {
+      height: 90px;
+      width: 700px;
+    }
     .list-item {
       padding: 0 10px;
       line-height: 20px; /* Must match row-size attribute */
@@ -75,6 +83,42 @@
 
 <runway-grid
     id="h-list"
+    orientation="horizontal"
+    col-size="120"
+    buffer-size="5"
+></runway-grid>
+
+<h2>4. Infinite scroll (vertical, variable row height)</h2>
+<p style="margin: 0 0 8px; font-size: 13px; color: #666; max-width: 500px;">
+  Starts with a small page of rows and fetches (simulated) more from a "server" as soon as
+  the <strong>buffered</strong> range gets close to the end of the currently loaded data - i.e.
+  before the user actually scrolls to the bottom. New pages are appended via <code>appendData()</code>,
+  so the scroll position is never reset. Row heights vary per item.
+</p>
+<div class="controls">
+  <span id="infinite-status" style="font-size: 13px; color: #666;">Loaded 0 items</span>
+</div>
+
+<runway-grid
+    id="infinite-list"
+    orientation="vertical"
+    row-size="70"
+    buffer-size="5"
+></runway-grid>
+
+<h2>5. Infinite scroll (horizontal, variable column width)</h2>
+<p style="margin: 0 0 8px; font-size: 13px; color: #666; max-width: 700px;">
+  Same idea as demo 4, but along the column axis: <code>appendData()</code> grows the
+  <em>columns</em> (not the rows) when <code>orientation="horizontal"</code>, since the column
+  axis is what carries the items for a horizontal list. Column widths vary per item and are
+  auto-measured, same as demo 3.
+</p>
+<div class="controls">
+  <span id="infinite-h-status" style="font-size: 13px; color: #666;">Loaded 0 items</span>
+</div>
+
+<runway-grid
+    id="infinite-h-list"
     orientation="horizontal"
     col-size="120"
     buffer-size="5"
@@ -167,11 +211,9 @@
 
   // Listen to the range changes
   virtualScroll.addEventListener('rangechange', (e) => {
-    virtualScroll.addEventListener('rangechange', (e) => {
-      console.debug('Range change:', {
-        buffered: `${e.buffered.startRow} to ${e.buffered.endRow}`,
-        viewport: `${e.viewport.startRow} to ${e.viewport.endRow}`
-      });
+    console.debug('Range change:', {
+      buffered: `${e.buffered.startRow} to ${e.buffered.endRow}`,
+      viewport: `${e.viewport.startRow} to ${e.viewport.endRow}`
     });
   });
 
@@ -292,6 +334,169 @@
       buffered: `cols ${e.buffered.startCol} to ${e.buffered.endCol}`,
       viewport: `cols ${e.viewport.startCol} to ${e.viewport.endCol}`
     });
+  });
+
+  // ---------------------------------------------------------------------
+  // 4. Infinite scroll demo - vertical list, variable row height, data fetched
+  //    on demand as the buffered range approaches the end of what's loaded.
+  // ---------------------------------------------------------------------
+  const infiniteList = document.getElementById('infinite-list');
+  const infiniteStatus = document.getElementById('infinite-status');
+
+  // Number of rows fetched per simulated "page".
+  const INFINITE_PAGE_SIZE = 40;
+  // How many rows of runway may still be left in the buffered range before the next page
+  // is requested - large enough that the (simulated) network round-trip resolves and gets
+  // appended well before the user's viewport actually reaches the unloaded tail.
+  const INFINITE_FETCH_THRESHOLD = 15;
+
+  let infiniteFetching = false;
+
+  // Simulates a paginated backend endpoint: resolves after a short network-like delay with
+  // a page of items whose rendered height will vary from row to row (variable line count).
+  function fetchInfinitePage(offset, limit) {
+    return new Promise((resolve) => {
+      setTimeout(() => {
+        const page = Array.from({ length: limit }, (_, i) => {
+          const index = offset + i;
+          return { index, lines: 1 + (index % 4) }; // 1-4 lines of body text -> variable height
+        });
+        resolve(page);
+      }, 400);
+    });
+  }
+
+  function renderInfiniteStatus() {
+    infiniteStatus.textContent = infiniteFetching
+        ? `Loaded ${infiniteList.rows.length} items - fetching more…`
+        : `Loaded ${infiniteList.rows.length} items`;
+  }
+
+  // Fetches the next page and appends it via `appendData()` - preserving the current
+  // scroll position instead of resetting it like assigning `data` would. Also used to
+  // load the very first page, since `appendData()` builds the registry on first use.
+  async function loadMoreInfiniteData() {
+    if (infiniteFetching) return;
+    infiniteFetching = true;
+    renderInfiniteStatus();
+
+    const offset = infiniteList.rows.length;
+    const page = await fetchInfinitePage(offset, INFINITE_PAGE_SIZE);
+
+    infiniteFetching = false;
+    infiniteList.appendData(page);
+    renderInfiniteStatus();
+  }
+
+  // Signature: (rowItem, rowIndex, colIndex, rowCount, colCount)
+  infiniteList.template = (item, index) => {
+    const paragraph = 'Simulated content fetched from the server. '.repeat(item.lines);
+    const hue = (index * 47) % 360;
+
+    return `
+      <div style="box-sizing: border-box; padding: 12px; display: flex; flex-direction: column; gap: 6px; border-bottom: 1px solid #eee; background: ${index % 2 === 0 ? '#fff' : '#fafafa'};">
+        <strong style="color: hsl(${hue}, 65%, 40%);">Row ${index}</strong>
+        <p style="margin: 0; font-size: 13px; color: #555; line-height: 1.4;">${paragraph}</p>
+      </div>
+    `;
+  };
+
+  // Kick off with the first page.
+  loadMoreInfiniteData();
+
+  infiniteList.addEventListener('rangechange', (e) => {
+    renderInfiniteStatus();
+    // Fetch the next page as soon as the *buffered* (off-screen) range gets close to the
+    // end of what's currently loaded - i.e. before the user actually hits the true bottom.
+    if (e.buffered.endRow >= infiniteList.rows.length - INFINITE_FETCH_THRESHOLD) {
+      loadMoreInfiniteData();
+    }
+  });
+
+  // ---------------------------------------------------------------------
+  // 5. Infinite scroll demo - horizontal list, variable column width, data
+  //    fetched on demand as the buffered range approaches the end of what's
+  //    loaded. Mirrors demo 4, but appends along the *column* axis via
+  //    `appendData()`, since `orientation="horizontal"` makes columns the item
+  //    axis (see demo 3) - `rows` stays a single fixed placeholder entry.
+  // ---------------------------------------------------------------------
+  const infiniteHList = document.getElementById('infinite-h-list');
+  const infiniteHStatus = document.getElementById('infinite-h-status');
+
+  // Number of items fetched per simulated "page".
+  const INFINITE_H_PAGE_SIZE = 40;
+  // How many columns of runway may still be left in the buffered range before the next page
+  // is requested - large enough that the (simulated) network round-trip resolves and gets
+  // appended well before the user's viewport actually reaches the unloaded tail.
+  const INFINITE_H_FETCH_THRESHOLD = 15;
+
+  let infiniteHFetching = false;
+
+  // Simulates a paginated backend endpoint, same shape as demo 4's, but each item carries a
+  // variable "width factor" instead of a line count, so the auto-measured column width
+  // (rather than row height) is what ends up varying from item to item.
+  function fetchInfiniteHPage(offset, limit) {
+    return new Promise((resolve) => {
+      setTimeout(() => {
+        const page = Array.from({ length: limit }, (_, i) => {
+          const index = offset + i;
+          return { index, widthFactor: 1 + (index % 4) }; // 1-4x label repeats -> variable width
+        });
+        resolve(page);
+      }, 400);
+    });
+  }
+
+  function renderInfiniteHStatus() {
+    const loadedCount = infiniteHList.columnsData ? infiniteHList.columnsData.length : 0;
+    infiniteHStatus.textContent = infiniteHFetching
+        ? `Loaded ${loadedCount} items - fetching more…`
+        : `Loaded ${loadedCount} items`;
+  }
+
+  // Fetches the next page and appends it via `appendData()`. For `orientation="horizontal"`
+  // this grows the *column* axis (`columnsData`) instead of `rows`, preserving the current
+  // horizontal scroll position instead of resetting it like assigning `columns` would. Also
+  // used to load the very first page, since `appendData()` builds the registry on first use.
+  async function loadMoreInfiniteHData() {
+    if (infiniteHFetching) return;
+    infiniteHFetching = true;
+    renderInfiniteHStatus();
+
+    const offset = infiniteHList.columnsData ? infiniteHList.columnsData.length : 0;
+    const page = await fetchInfiniteHPage(offset, INFINITE_H_PAGE_SIZE);
+
+    infiniteHFetching = false;
+    infiniteHList.appendData(page);
+    renderInfiniteHStatus();
+  }
+
+  // Signature: (rowItem, rowIndex, colIndex, rowCount, colCount). `rowItem` is unused here
+  // (rows is just a fixed single placeholder for a horizontal list) - the actual per-item
+  // data lives in `columnsData`, indexed by `colIndex`.
+  infiniteHList.template = (rowItem, rowIndex, colIndex) => {
+    const entry = infiniteHList.columnsData[colIndex];
+    const hue = (colIndex * 47) % 360;
+    const label = 'Item '.repeat(entry.widthFactor) + `#${entry.index}`;
+
+    return `
+      <div style="box-sizing: border-box; height: 100%; padding: 0 16px; display: flex; align-items: center; white-space: nowrap; border-right: 1px solid #eee; background: ${colIndex % 2 === 0 ? '#fff' : '#fafafa'};">
+        <strong style="color: hsl(${hue}, 65%, 40%);">${label}</strong>
+      </div>
+    `;
+  };
+
+  // Kick off with the first page.
+  loadMoreInfiniteHData();
+
+  infiniteHList.addEventListener('rangechange', (e) => {
+    renderInfiniteHStatus();
+    // Fetch the next page as soon as the *buffered* (off-screen) range gets close to the
+    // end of what's currently loaded - i.e. before the user actually hits the true right edge.
+    const loadedCount = infiniteHList.columnsData ? infiniteHList.columnsData.length : 0;
+    if (e.buffered.endCol >= loadedCount - INFINITE_H_FETCH_THRESHOLD) {
+      loadMoreInfiniteHData();
+    }
   });
 </script>
 </body>

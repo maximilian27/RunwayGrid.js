@@ -91,11 +91,15 @@ export declare class RunwayGrid extends HTMLElement {
   set data(rows: readonly unknown[]);
 
   /**
-   * Non-destructively appends rows to the existing data set, e.g. for infinite
-   * scroll pagination. Unlike setting `data`, this does not rebuild the
-   * layout registry or reset the scroll position.
+   * Non-destructively appends items to the existing data set, e.g. for
+   * infinite scroll pagination. Unlike setting `data`/`columns`, this does
+   * not rebuild the layout registry or reset the scroll position.
    *
-   * @param newItems The rows to append after the current data set.
+   * For `orientation="horizontal"`, items are appended along the column
+   * axis (mirroring `columns`); for `orientation="vertical"`/`"both"`, items
+   * are appended along the row axis (mirroring `data`).
+   *
+   * @param newItems The rows (or, for `orientation="horizontal"`, columns) to append after the current data set.
    */
   appendData(newItems: readonly unknown[]): void;
 

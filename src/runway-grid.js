@@ -807,24 +807,40 @@ export class RunwayGrid extends HTMLElement {
   set data(newRows) { this.rows = newRows || []; this._virtualScrollTop = 0; this._virtualScrollLeft = 0; this.setupRegistry(); }
 
   /**
-   * Non-destructively appends rows to the existing data set, e.g. for infinite
-   * scroll pagination. Unlike {@link RunwayGrid#data}, this does not rebuild the
-   * WASM registry or reset the scroll position: new default-sized rows are pushed
-   * onto the registry's row axis (preserving every previously auto-measured row
-   * height), the spacer is resized so the native scrollbar track immediately
-   * reflects the new virtual size, and the viewport stays locked at the user's
-   * current read position.
+   * Non-destructively appends items to the existing data set, e.g. for infinite
+   * scroll pagination. Unlike {@link RunwayGrid#data}/{@link RunwayGrid#columns},
+   * this does not rebuild the WASM registry or reset the scroll position: new
+   * default-sized rows/columns are pushed onto the registry's corresponding axis
+   * (preserving every previously auto-measured row height/column width), the
+   * spacer is resized so the native scrollbar track immediately reflects the new
+   * virtual size, and the viewport stays locked at the user's current read position.
    *
-   * @param {Array<unknown>} newItems The rows to append after the current data set.
+   * For `orientation="horizontal"`, items are appended along the column axis
+   * (mirroring {@link RunwayGrid#columns}, which is what drives `colCount` for a
+   * horizontal list); for `orientation="vertical"`/`"both"`, items are appended
+   * along the row axis (mirroring {@link RunwayGrid#data}).
+   *
+   * @param {Array<unknown>} newItems The rows (or, for `orientation="horizontal"`, columns) to append after the current data set.
    */
   appendData(newItems) {
     if (!newItems || !newItems.length) return;
     const count = newItems.length;
-    this.rows = this.rows.concat(newItems);
 
-    if (!this.registry) { this.setupRegistry(); return; }
+    if (this.orientation === 'horizontal') {
+      this.columnsData = (this.columnsData || []).concat(newItems);
+      this._colCount = this.columnsData.length;
 
-    this.registry.append_rows(count, this.rowSize);
+      if (!this.registry) { this.setupRegistry(); return; }
+
+      this.registry.append_cols(count, this.colSize);
+    } else {
+      this.rows = this.rows.concat(newItems);
+
+      if (!this.registry) { this.setupRegistry(); return; }
+
+      this.registry.append_rows(count, this.rowSize);
+    }
+
     this.updateSpacer();
     this.calculateIndices();
   }

@@ -178,6 +178,24 @@ impl VirtualScrollRegistry {
         update_size(&mut self.col_widths, &mut self.col_prefix_sums, index, new_width)
     }
 
+    // Non-destructively grows the column axis by `count` columns, each starting at
+    // `default_size`. Mirrors `append_rows`: continues `col_prefix_sums` from its last
+    // known cumulative value instead of rebuilding from scratch, so every previously
+    // auto-measured column width (and its resulting prefix sum) stays mathematically
+    // intact - this is what allows infinite-scroll style appends to happen on the
+    // horizontal axis without resetting the scroll position or discarding measured
+    // layout state.
+    pub fn append_cols(&mut self, count: usize, default_size: f64) {
+        let mut running_sum = total_of(&self.col_prefix_sums);
+        self.col_widths.reserve(count);
+        self.col_prefix_sums.reserve(count);
+        for _ in 0..count {
+            running_sum += default_size;
+            self.col_widths.push(default_size);
+            self.col_prefix_sums.push(running_sum);
+        }
+    }
+
     pub fn get_total_height(&self) -> f64 {
         total_of(&self.row_prefix_sums)
     }
