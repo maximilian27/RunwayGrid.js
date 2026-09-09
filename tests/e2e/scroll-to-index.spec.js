@@ -1,8 +1,9 @@
 import { test, expect } from '@playwright/test';
 
-// Mirrors the vertical-list dataset defined in index.html (#my-list, orientation="vertical").
-// Its `template` produces highly variable row heights (plain rows, tall "card" rows, and
-// section headers), so most rows are never measured until actually rendered.
+// Mirrors the vertical-list dataset defined in examples/01-vertical-list.html (#my-list,
+// orientation="vertical"). Its `template` produces highly variable row heights (plain rows,
+// tall "card" rows, and section headers), so most rows are never measured until actually
+// rendered.
 const TARGET_INDEX = 50000;
 
 // Regression coverage for: "jump to index does not work correctly on the first attempt -
@@ -16,7 +17,7 @@ const TARGET_INDEX = 50000;
 // a single `scrollToCell()` call.
 test.describe('runway-grid - jump to index after a prior scroll', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/examples/01-vertical-list.html');
     await page.waitForFunction(() => {
       const el = document.getElementById('my-list');
       return el && el.registry !== null && el.renderedNodes.length > 0;

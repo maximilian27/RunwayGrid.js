@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>7. Sliding window (horizontal) - runway-grid</title>
+  <script>
+    (function () {
+      var stored = localStorage.getItem('runway-grid-demo-theme');
+      if (stored === 'light' || stored === 'dark') {
+        document.documentElement.setAttribute('data-theme', stored);
+      }
+    })();
+  </script>
+  <link rel="stylesheet" href="../assets/theme.css" />
+  <style>
+    #sliding-h-list {
+      height: 90px;
+      width: 700px;
+    }
+  </style>
+</head>
+<body>
+
+<header class="site-header">
+  <a class="brand" href="../index.html">runway-grid</a>
+  <nav class="site-nav">
+    <a href="../index.html">Overview</a>
+    <a href="01-vertical-list.html">1. Vertical list</a>
+    <a href="02-grid-2d.html">2. 2D grid</a>
+    <a href="03-horizontal-list.html">3. Horizontal list</a>
+    <a href="04-infinite-vertical.html">4. Infinite (vertical)</a>
+    <a href="05-infinite-horizontal.html">5. Infinite (horizontal)</a>
+    <a href="06-sliding-vertical.html">6. Sliding window (vertical)</a>
+    <a href="07-sliding-horizontal.html">7. Sliding window (horizontal)</a>
+  </nav>
+  <button class="theme-toggle" type="button" aria-label="Toggle color theme">Theme</button>
+</header>
+
+<main class="page">
+  <div class="example-nav">
+    <a href="06-sliding-vertical.html">&larr; Previous: Sliding window (vertical)</a>
+    <a href="../index.html">Back to overview &rarr;</a>
+  </div>
+
+  <h1>7. Sliding window / infinite scroll (horizontal, memory-capped)</h1>
+  <p class="lede">
+    Same idea as the vertical sliding-window example, but along the column axis: once a new page
+    is appended via <code>appendData()</code>, columns beyond the cap are pruned from the left via
+    <code>removeDataFromHead()</code>, which counter-scrolls the horizontal axis so nothing jumps.
+    The <code>columnsData</code> array (and the WASM column vectors) never grows past the cap,
+    keeping memory flat during infinite horizontal scrolling.
+  </p>
+
+  <div class="controls">
+    <span id="sliding-h-status" class="status-text">Loaded 0 items</span>
+  </div>
+
+  <runway-grid
+      id="sliding-h-list"
+      orientation="horizontal"
+      col-size="120"
+      buffer-size="5"
+  ></runway-grid>
+
+  <h2>API used in this example</h2>
+  <table>
+    <thead><tr><th>API</th><th>Usage</th></tr></thead>
+    <tbody>
+      <tr><td><code>appendData(newItems)</code></td><td>Appends each fetched page along the column axis, exactly like the horizontal infinite-scroll example.</td></tr>
+      <tr><td><code>removeDataFromHead(count)</code></td><td>Called immediately after each append if <code>colCount &gt; 1000</code>, dropping the oldest columns and counter-scrolling so nothing jumps.</td></tr>
+      <tr><td><code>colCount</code> <em>(readonly)</em></td><td>Checked after each append to decide whether the 1,000-column cap was exceeded.</td></tr>
+      <tr><td><code>columnsData</code> <em>(readonly)</em></td><td>Read for the fetch threshold check and indexed by <code>colIndex</code> inside <code>template</code>.</td></tr>
+    </tbody>
+  </table>
+
+  <p class="lede">
+    View this page's source (e.g. your browser's "View Page Source") for the full, runnable
+    script - every example on this site is a plain, standalone HTML file with an inline
+    <code>&lt;script type="module"&gt;</code>.
+  </p>
+</main>
+
+<script type="module" src="../assets/shared.js"></script>
+<script type="module">
+  import '../../src/runway-grid.js';
+
+  const slidingHList = document.getElementById('sliding-h-list');
+  const slidingHStatus = document.getElementById('sliding-h-status');
+
+  // Number of items fetched per simulated "page".
+  const SLIDING_H_PAGE_SIZE = 100;
+  // Hard cap on how many columns may be loaded at once - once exceeded, the oldest columns
+  // are pruned from the head so columnsData (and the WASM column vectors) never grow past
+  // this size.
+  const SLIDING_H_MAX_COLS = 1000;
+  // How many columns of runway may still be left in the buffered range before the next page
+  // is requested, same idea as the horizontal infinite-scroll example's threshold.
+  const SLIDING_H_FETCH_THRESHOLD = 30;
+
+  let slidingHFetching = false;
+  // Total items ever fetched from the "server" - keeps growing forever, even though the
+  // loaded `columnsData` array itself is capped at SLIDING_H_MAX_COLS.
+  let slidingHTotalFetched = 0;
+
+  // Simulates a paginated backend endpoint, same shape as the horizontal infinite-scroll example's.
+  function fetchSlidingHPage(offset, limit) {
+    return new Promise((resolve) => {
+      setTimeout(() => {
+        const page = Array.from({ length: limit }, (_, i) => {
+          const index = offset + i;
+          return { index, widthFactor: 1 + (index % 4) }; // 1-4x label repeats -> variable width
+        });
+        resolve(page);
+      }, 400);
+    });
+  }
+
+  function renderSlidingHStatus() {
+    const loadedCount = slidingHList.columnsData ? slidingHList.columnsData.length : 0;
+    const suffix = slidingHFetching ? ' - fetching more…' : '';
+    slidingHStatus.textContent =
+        `Loaded ${loadedCount} of max ${SLIDING_H_MAX_COLS} items (${slidingHTotalFetched} fetched total)${suffix}`;
+  }
+
+  // Fetches the next page, appends it via appendData(), then immediately prunes the head
+  // if the cap was exceeded, mirroring the vertical sliding-window example but along the
+  // column axis.
+  async function loadMoreSlidingHData() {
+    if (slidingHFetching) return;
+    slidingHFetching = true;
+    renderSlidingHStatus();
+
+    const page = await fetchSlidingHPage(slidingHTotalFetched, SLIDING_H_PAGE_SIZE);
+    slidingHTotalFetched += page.length;
+
+    slidingHFetching = false;
+    slidingHList.appendData(page);
+
+    // Immediately after appending, cap columnsData at SLIDING_H_MAX_COLS by dropping the
+    // oldest columns from the left - removeDataFromHead() counter-scrolls the horizontal
+    // axis by the exact pixel width removed, so this is completely invisible to the user.
+    if (slidingHList.colCount > SLIDING_H_MAX_COLS) {
+      slidingHList.removeDataFromHead(slidingHList.colCount - SLIDING_H_MAX_COLS);
+    }
+
+    renderSlidingHStatus();
+  }
+
+  // Signature: (rowItem, rowIndex, colIndex, rowCount, colCount). `colIndex` is the
+  // column's *local* array position, which keeps shifting as older columns are pruned
+  // from the head - the stable absolute column number instead comes from the entry's own
+  // `index`.
+  slidingHList.template = (rowItem, rowIndex, colIndex) => {
+    const entry = slidingHList.columnsData[colIndex];
+    const hue = (entry.index * 47) % 360;
+    const label = 'Item '.repeat(entry.widthFactor) + `#${entry.index}`;
+
+    return `
+      <div style="box-sizing: border-box; height: 100%; padding: 0 16px; display: flex; align-items: center; white-space: nowrap; border-right: 1px solid var(--color-border); background: ${entry.index % 2 === 0 ? 'var(--color-bg)' : 'var(--color-bg-alt)'};">
+        <strong style="color: hsl(${hue}, 65%, 40%);">${label}</strong>
+      </div>
+    `;
+  };
+
+  // Kick off with the first page.
+  loadMoreSlidingHData();
+
+  slidingHList.addEventListener('rangechange', (e) => {
+    renderSlidingHStatus();
+    // Fetch the next page as soon as the *buffered* (off-screen) range gets close to the
+    // end of what's currently loaded - same trigger as the horizontal infinite-scroll example,
+    // just now paired with the head-pruning above so the loaded set never grows past
+    // SLIDING_H_MAX_COLS.
+    const loadedCount = slidingHList.columnsData ? slidingHList.columnsData.length : 0;
+    if (e.buffered.endCol >= loadedCount - SLIDING_H_FETCH_THRESHOLD) {
+      loadMoreSlidingHData();
+    }
+  });
+</script>
+</body>
+</html>

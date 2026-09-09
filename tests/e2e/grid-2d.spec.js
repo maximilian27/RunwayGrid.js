@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 
-// Mirrors the 2D grid dataset defined in index.html (#grid-demo, orientation="both").
+// Mirrors the 2D grid dataset defined in examples/02-grid-2d.html (#grid-demo, orientation="both").
 const GRID_ROWS = 100000;
 const GRID_COLS = 500;
 const LAST_ROW = GRID_ROWS - 1;
@@ -8,10 +8,10 @@ const LAST_COL = GRID_COLS - 1;
 
 test.describe('runway-grid - 2D grid (independent vertical + horizontal panning)', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/examples/02-grid-2d.html');
 
     // Wait until the WASM registry is ready and the initial range has rendered before
-    // attaching the listener - deferred module scripts (like index.html's) run before
+    // attaching the listener - deferred module scripts (like this page's) run before
     // `DOMContentLoaded`, so anything gated on that event would already miss the very
     // first `rangechange`. Forcing one fresh `calculateIndices()` call right after
     // attaching guarantees an up-to-date event to observe from a known starting point.

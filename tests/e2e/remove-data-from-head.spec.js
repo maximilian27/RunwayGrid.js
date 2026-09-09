@@ -6,7 +6,7 @@ import { test, expect } from '@playwright/test';
 // the row axis (vertical lists) and the column axis (horizontal lists).
 test.describe('runway-grid - removeDataFromHead (sliding window)', () => {
   test('vertical: removing rows from the head shrinks the virtual size and counter-scrolls by the exact delta', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/examples/01-vertical-list.html');
     await page.waitForFunction(() => {
       const el = document.getElementById('my-list');
       return el && el.registry !== null && el.renderedNodes.length > 0;
@@ -59,7 +59,7 @@ test.describe('runway-grid - removeDataFromHead (sliding window)', () => {
   });
 
   test('horizontal: removing columns from the head shrinks the virtual size and counter-scrolls by the exact delta', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/examples/03-horizontal-list.html');
     await page.waitForFunction(() => {
       const el = document.getElementById('h-list');
       return el && el.registry !== null && el.renderedNodes.length > 0;

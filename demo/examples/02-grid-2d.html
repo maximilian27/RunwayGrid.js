@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>2. 2D grid - runway-grid</title>
+  <script>
+    (function () {
+      var stored = localStorage.getItem('runway-grid-demo-theme');
+      if (stored === 'light' || stored === 'dark') {
+        document.documentElement.setAttribute('data-theme', stored);
+      }
+    })();
+  </script>
+  <link rel="stylesheet" href="../assets/theme.css" />
+  <style>
+    #grid-demo {
+      height: 400px;
+      width: 700px;
+    }
+  </style>
+</head>
+<body>
+
+<header class="site-header">
+  <a class="brand" href="../index.html">runway-grid</a>
+  <nav class="site-nav">
+    <a href="../index.html">Overview</a>
+    <a href="01-vertical-list.html">1. Vertical list</a>
+    <a href="02-grid-2d.html">2. 2D grid</a>
+    <a href="03-horizontal-list.html">3. Horizontal list</a>
+    <a href="04-infinite-vertical.html">4. Infinite (vertical)</a>
+    <a href="05-infinite-horizontal.html">5. Infinite (horizontal)</a>
+    <a href="06-sliding-vertical.html">6. Sliding window (vertical)</a>
+    <a href="07-sliding-horizontal.html">7. Sliding window (horizontal)</a>
+  </nav>
+  <button class="theme-toggle" type="button" aria-label="Toggle color theme">Theme</button>
+</header>
+
+<main class="page">
+  <div class="example-nav">
+    <a href="01-vertical-list.html">&larr; Previous: Vertical list</a>
+    <a href="03-horizontal-list.html">Next: Horizontal list &rarr;</a>
+  </div>
+
+  <h1>2. 2D grid (independent vertical + horizontal panning)</h1>
+  <p class="lede">
+    A 100,000 x 500 cell grid with both axes virtualized independently via
+    <code>orientation="both"</code>. Every 10th row is taller and every 5th column is wider, to
+    demonstrate that row heights and column widths are tracked per-axis and combined.
+  </p>
+
+  <div class="controls">
+    <button id="grid-top-left-btn">Top-Left (0,0)</button>
+    <button id="grid-bottom-right-btn">Bottom-Right (last,last)</button>
+  </div>
+
+  <runway-grid
+      id="grid-demo"
+      orientation="both"
+      row-size="28"
+      col-size="120"
+      buffer-size="3"
+  ></runway-grid>
+
+  <h2>API used in this example</h2>
+  <table>
+    <thead><tr><th>API</th><th>Usage</th></tr></thead>
+    <tbody>
+      <tr><td><code>orientation</code></td><td>Set to <code>"both"</code> - rows and columns are virtualized independently.</td></tr>
+      <tr><td><code>row-size</code> / <code>col-size</code></td><td>Initial estimates (<code>28</code>px / <code>120</code>px) before real sizes are auto-measured.</td></tr>
+      <tr><td><code>columns</code></td><td>Set to a 500-entry array (drives <code>colCount</code>), before <code>data</code>.</td></tr>
+      <tr><td><code>data</code></td><td>Set to a 100,000-entry row array (drives <code>rowCount</code>).</td></tr>
+      <tr><td><code>template</code></td><td>Signature <code>(rowItem, rowIndex, colIndex, rowCount, colCount)</code>; varies height/width by index.</td></tr>
+      <tr><td><code>scrollToCell(rowIndex, colIndex)</code></td><td>Used by the Top-Left/Bottom-Right buttons.</td></tr>
+      <tr><td><code>rangechange</code></td><td>Logs both row and column ranges for <code>e.buffered</code>/<code>e.viewport</code>.</td></tr>
+    </tbody>
+  </table>
+
+  <p class="lede">
+    View this page's source (e.g. your browser's "View Page Source") for the full, runnable
+    script - every example on this site is a plain, standalone HTML file with an inline
+    <code>&lt;script type="module"&gt;</code>.
+  </p>
+</main>
+
+<script type="module" src="../assets/shared.js"></script>
+<script type="module">
+  import '../../src/runway-grid.js';
+
+  const gridDemo = document.getElementById('grid-demo');
+  const GRID_ROWS = 100000;
+  const GRID_COLS = 500;
+
+  // Column definitions (drives colCount = 500). Must be set before `data` so both
+  // axes are known when the registry is created.
+  gridDemo.columns = Array.from({ length: GRID_COLS }, (_, c) => `Col ${c}`);
+
+  // Row data - each row just needs to exist; actual cell content is computed from
+  // (rowIndex, colIndex) inside the template below.
+  const gridRows = Array.from({ length: GRID_ROWS }, (_, r) => ({ id: r }));
+
+  // Note: `runway-grid` renders cell content inside its own Shadow DOM, so
+  // page-level stylesheet classes (like the light-DOM `.list-item` class) never actually
+  // apply to it - only inline styles (and inherited properties) do. Each cell's box is
+  // individually absolutely-positioned to support independent row/column virtualization,
+  // so an explicit inline `width` matching `col-size` (120px here) is required, otherwise
+  // it shrinks-to-fit around its unstyled text content instead.
+  gridDemo.template = (rowItem, rowIndex, colIndex, rowCount, colCount) => {
+    // Make every 10th row much taller, and every 5th column much wider
+    const isTallRow = rowIndex % 10 === 0;
+    const isWideCol = colIndex % 5 === 0;
+
+    const height = isTallRow ? '150px' : '40px';
+    const width = isWideCol ? '300px' : '120px';
+
+    return `
+      <div style="box-sizing: border-box; width: ${width}; height: ${height}; padding: 8px; border: 1px solid var(--color-border); color: var(--color-text);">
+        R${rowIndex} x C${colIndex}
+      </div>
+    `;
+  };
+
+  gridDemo.data = gridRows;
+
+  document.getElementById('grid-top-left-btn').addEventListener('click', () => {
+    gridDemo.scrollToCell(0, 0);
+  });
+
+  document.getElementById('grid-bottom-right-btn').addEventListener('click', () => {
+    gridDemo.scrollToCell(GRID_ROWS - 1, GRID_COLS - 1);
+  });
+
+  gridDemo.addEventListener('rangechange', (e) => {
+    console.debug('Grid rendering range:', {
+      buffered: `rows ${e.buffered.startRow}-${e.buffered.endRow}, cols ${e.buffered.startCol}-${e.buffered.endCol}`,
+      viewport: `rows ${e.viewport.startRow}-${e.viewport.endRow}, cols ${e.viewport.startCol}-${e.viewport.endCol}`
+    });
+  });
+</script>
+</body>
+</html>

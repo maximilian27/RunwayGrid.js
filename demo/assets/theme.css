@@ -1,0 +1,431 @@
+/*
+ * Shared design system for the runway-grid demo/doc site.
+ *
+ * Color theme is system-based: it follows the OS/browser `prefers-color-scheme` by default,
+ * with an optional manual override (persisted in localStorage, toggled via shared.js) applied
+ * through `[data-theme="light"]` / `[data-theme="dark"]` on <html>.
+ */
+
+:root {
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+
+  --max-width: 1240px;
+  --radius: 8px;
+
+  /* Light theme (default) */
+  --color-bg: #ffffff;
+  --color-bg-alt: #f6f8fa;
+  --color-bg-inset: #f0f4f8;
+  --color-border: #e2e5e9;
+  --color-text: #1a1d21;
+  --color-text-muted: #5c6570;
+  --color-accent: #0070f3;
+  --color-accent-contrast: #ffffff;
+  --color-code-bg: #f0f2f5;
+  --color-code-text: #c7254e;
+  --color-pre-bg: #1e1e2e;
+  --color-pre-text: #d9dbe3;
+  --color-table-stripe: #fafbfc;
+  --color-warn-bg: #fff8e6;
+  --color-warn-border: #f0c766;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-bg: #14161a;
+    --color-bg-alt: #1b1e23;
+    --color-bg-inset: #20242b;
+    --color-border: #2c313a;
+    --color-text: #e6e8eb;
+    --color-text-muted: #98a2ae;
+    --color-accent: #4d9bff;
+    --color-accent-contrast: #0b1220;
+    --color-code-bg: #23272f;
+    --color-code-text: #ff8fb3;
+    --color-pre-bg: #0d0e12;
+    --color-pre-text: #d9dbe3;
+    --color-table-stripe: #1a1d22;
+    --color-warn-bg: #2a2411;
+    --color-warn-border: #6b551c;
+  }
+}
+
+/* Manual override, applied by shared.js on top of the system preference above. */
+:root[data-theme="light"] {
+  --color-bg: #ffffff;
+  --color-bg-alt: #f6f8fa;
+  --color-bg-inset: #f0f4f8;
+  --color-border: #e2e5e9;
+  --color-text: #1a1d21;
+  --color-text-muted: #5c6570;
+  --color-accent: #0070f3;
+  --color-accent-contrast: #ffffff;
+  --color-code-bg: #f0f2f5;
+  --color-code-text: #c7254e;
+  --color-pre-bg: #1e1e2e;
+  --color-pre-text: #d9dbe3;
+  --color-table-stripe: #fafbfc;
+  --color-warn-bg: #fff8e6;
+  --color-warn-border: #f0c766;
+}
+
+:root[data-theme="dark"] {
+  --color-bg: #14161a;
+  --color-bg-alt: #1b1e23;
+  --color-bg-inset: #20242b;
+  --color-border: #2c313a;
+  --color-text: #e6e8eb;
+  --color-text-muted: #98a2ae;
+  --color-accent: #4d9bff;
+  --color-accent-contrast: #0b1220;
+  --color-code-bg: #23272f;
+  --color-code-text: #ff8fb3;
+  --color-pre-bg: #0d0e12;
+  --color-pre-text: #d9dbe3;
+  --color-table-stripe: #1a1d22;
+  --color-warn-bg: #2a2411;
+  --color-warn-border: #6b551c;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  color-scheme: light dark;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  color: var(--color-text);
+  background: var(--color-bg);
+  line-height: 1.5;
+}
+
+a {
+  color: var(--color-accent);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Site header / nav                                                      */
+/* ---------------------------------------------------------------------- */
+
+.site-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 24px;
+  background: var(--color-bg-alt);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.site-header .brand {
+  font-weight: 700;
+  font-size: 15px;
+  color: var(--color-text);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.site-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  font-size: 13px;
+  flex: 1;
+}
+
+.site-nav a {
+  color: var(--color-text-muted);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.site-nav a:hover,
+.site-nav a.active {
+  color: var(--color-accent);
+}
+
+.theme-toggle {
+  margin-left: auto;
+  font: inherit;
+  font-size: 13px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg);
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.theme-toggle:hover {
+  border-color: var(--color-accent);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Page layout                                                            */
+/* ---------------------------------------------------------------------- */
+
+.page {
+  max-width: var(--max-width);
+  margin: 0 auto;
+  padding: 28px 24px 80px;
+}
+
+.page h1 {
+  margin: 0 0 6px;
+  font-size: 26px;
+}
+
+.page h2 {
+  margin-top: 40px;
+  padding-top: 8px;
+  border-top: 1px solid var(--color-border);
+  font-size: 19px;
+}
+
+.page h3 {
+  font-size: 15px;
+}
+
+.lede {
+  color: var(--color-text-muted);
+  max-width: 720px;
+  font-size: 14px;
+}
+
+.example-nav {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 13px;
+  margin-bottom: 4px;
+}
+
+.example-nav a {
+  text-decoration: none;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Cards (index page example grid)                                        */
+/* ---------------------------------------------------------------------- */
+
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 14px;
+  margin: 18px 0;
+}
+
+.card {
+  display: block;
+  padding: 16px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-bg-alt);
+  text-decoration: none;
+  color: inherit;
+  transition: border-color 0.15s ease, transform 0.15s ease;
+}
+
+.card:hover {
+  border-color: var(--color-accent);
+  transform: translateY(-1px);
+}
+
+.card .card-num {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: var(--color-accent);
+  margin-bottom: 6px;
+}
+
+.card h3 {
+  margin: 0 0 6px;
+  font-size: 15px;
+}
+
+.card p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Tables (API reference)                                                 */
+/* ---------------------------------------------------------------------- */
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  margin: 12px 0 24px;
+}
+
+th,
+td {
+  text-align: left;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--color-border);
+  vertical-align: top;
+}
+
+th {
+  color: var(--color-text-muted);
+  font-weight: 600;
+  border-bottom: 2px solid var(--color-border);
+}
+
+tbody tr:nth-child(odd) {
+  background: var(--color-table-stripe);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Inline code / code blocks                                              */
+/* ---------------------------------------------------------------------- */
+
+code {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  background: var(--color-code-bg);
+  color: var(--color-code-text);
+  padding: 0.1em 0.4em;
+  border-radius: 4px;
+}
+
+pre {
+  background: var(--color-pre-bg);
+  color: var(--color-pre-text);
+  padding: 14px 16px;
+  border-radius: var(--radius);
+  overflow-x: auto;
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  border-radius: 0;
+  font-size: inherit;
+}
+
+details.source {
+  margin: 14px 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+details.source summary {
+  cursor: pointer;
+  padding: 9px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  background: var(--color-bg-alt);
+  list-style: none;
+}
+
+details.source summary::-webkit-details-marker {
+  display: none;
+}
+
+details.source summary::before {
+  content: '▸ ';
+  color: var(--color-text-muted);
+}
+
+details.source[open] summary::before {
+  content: '▾ ';
+}
+
+details.source pre {
+  margin: 0;
+  border-radius: 0;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Demo controls / status text                                            */
+/* ---------------------------------------------------------------------- */
+
+.controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.controls input {
+  font: inherit;
+  font-size: 13px;
+  padding: 5px 8px;
+  border-radius: 5px;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
+.controls button {
+  font: inherit;
+  font-size: 13px;
+  padding: 5px 10px;
+  border-radius: 5px;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-alt);
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.controls button:hover {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.status-text {
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
+
+.callout {
+  font-size: 13px;
+  color: var(--color-text);
+  background: var(--color-warn-bg);
+  border: 1px solid var(--color-warn-border);
+  border-radius: var(--radius);
+  padding: 10px 14px;
+  max-width: 720px;
+}
+
+/* ---------------------------------------------------------------------- */
+/* runway-grid host sizing shared by every example                        */
+/* ---------------------------------------------------------------------- */
+
+runway-grid {
+  display: block;
+  height: 300px;
+  width: 500px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-bg);
+  margin: 10px 0 20px;
+  /* Reset back to the browser's default font instead of inheriting the doc site's chosen
+     `body` font: several examples auto-measure cell sizes from their rendered text width
+     (e.g. the horizontal list's chips), and those pixel measurements must stay identical to
+     what the un-styled demo previously produced, regardless of the surrounding page's design. */
+  font-family: initial;
+}
+
+.list-item {
+  padding: 0 10px;
+  line-height: 20px; /* Must match row-size attribute */
+  border-bottom: 1px solid #eee;
+}

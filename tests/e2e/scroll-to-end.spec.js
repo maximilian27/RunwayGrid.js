@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 
-// Mirrors the vertical-list dataset defined in index.html (#my-list, orientation="vertical").
+// Mirrors the vertical-list dataset defined in examples/01-vertical-list.html (#my-list,
+// orientation="vertical").
 const TOTAL_ITEMS = 1000000;
 const LAST_INDEX = TOTAL_ITEMS - 1;
 
@@ -11,7 +12,7 @@ const LAST_INDEX = TOTAL_ITEMS - 1;
 // not truncated by stale/unmeasured row heights.
 test.describe('runway-grid - reaching the true end (vertical axis)', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/examples/01-vertical-list.html');
 
     // Record every `rangechange` event so tests can assert on the last one fired,
     // without racing the component's internal async WASM initialization.

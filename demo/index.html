@@ -1,758 +1,282 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <style>
-    /* Define the viewport window size */
-    runway-grid {
-      display: block;
-      height: 300px;
-      width: 500px;
-      border: 1px solid #ccc;
-      background: #fff;
-      margin-top: 10px;
-    }
-    #grid-demo {
-      height: 400px;
-      width: 700px;
-    }
-    #h-list {
-      height: 60px;
-      width: 700px;
-    }
-    #infinite-list {
-      height: 400px;
-      width: 500px;
-    }
-    #infinite-h-list {
-      height: 90px;
-      width: 700px;
-    }
-    #sliding-list {
-      height: 400px;
-      width: 500px;
-    }
-    #sliding-h-list {
-      height: 90px;
-      width: 700px;
-    }
-    .list-item {
-      padding: 0 10px;
-      line-height: 20px; /* Must match row-size attribute */
-      border-bottom: 1px solid #eee;
-    }
-    .controls {
-      display: flex;
-      gap: 5px;
-      margin-bottom: 10px;
-    }
-    h2 {
-      margin-top: 30px;
-    }
-  </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>runway-grid - Demos &amp; API reference</title>
+  <script>
+    // Applied synchronously (before first paint) to avoid a light/dark flash on load - the
+    // full toggle logic lives in assets/shared.js, this just re-applies a stored override.
+    (function () {
+      var stored = localStorage.getItem('runway-grid-demo-theme');
+      if (stored === 'light' || stored === 'dark') {
+        document.documentElement.setAttribute('data-theme', stored);
+      }
+    })();
+  </script>
+  <link rel="stylesheet" href="assets/theme.css" />
 </head>
 <body>
 
-<h2>1. Vertical list (single column)</h2>
-<div class="controls">
-  <input type="number" id="index-input" value="50000" min="0" max="999999" />
-  <button id="jump-btn">Jump to Index</button>
-  <button id="start-btn">Top (0)</button>
-  <button id="end-btn">End </button>
-</div>
+<header class="site-header">
+  <a class="brand" href="index.html">runway-grid</a>
+  <nav class="site-nav">
+    <a href="index.html">Overview</a>
+    <a href="examples/01-vertical-list.html">1. Vertical list</a>
+    <a href="examples/02-grid-2d.html">2. 2D grid</a>
+    <a href="examples/03-horizontal-list.html">3. Horizontal list</a>
+    <a href="examples/04-infinite-vertical.html">4. Infinite (vertical)</a>
+    <a href="examples/05-infinite-horizontal.html">5. Infinite (horizontal)</a>
+    <a href="examples/06-sliding-vertical.html">6. Sliding window (vertical)</a>
+    <a href="examples/07-sliding-horizontal.html">7. Sliding window (horizontal)</a>
+  </nav>
+  <button class="theme-toggle" type="button" aria-label="Toggle color theme">Theme</button>
+</header>
 
-<runway-grid
-    id="my-list"
-    orientation="vertical"
-    row-size="20"
-    buffer-size="5"
-></runway-grid>
+<main class="page">
+  <h1>runway-grid</h1>
+  <p class="lede">
+    A high-performance virtual scroll <code>&lt;runway-grid&gt;</code> custom element for rendering
+    very large lists and 2D grids (millions of rows/columns) while keeping the DOM small. The
+    layout math is powered by a Rust/WebAssembly engine (<code>runway_engine</code>), compiled and
+    embedded directly into the published JavaScript - no separate <code>.wasm</code> file to host
+    or fetch.
+  </p>
 
-<h2>2. 2D grid (independent vertical + horizontal panning)</h2>
-<div class="controls">
-  <button id="grid-top-left-btn">Top-Left (0,0)</button>
-  <button id="grid-bottom-right-btn">Bottom-Right (last,last)</button>
-</div>
+  <h2>Installation</h2>
+  <pre><code>npm install runway-grid</code></pre>
 
-<runway-grid
-    id="grid-demo"
-    orientation="both"
-    row-size="28"
-    col-size="120"
-    buffer-size="3"
-></runway-grid>
+  <h2>Quick start</h2>
+  <pre><code>import 'runway-grid';</code></pre>
+  <pre><code>&lt;runway-grid id="my-list" orientation="vertical" row-size="20" buffer-size="5"&gt;&lt;/runway-grid&gt;
 
-<h2>3. Horizontal list (single row, varying item widths)</h2>
-<div class="controls">
-  <input type="number" id="h-index-input" value="500" min="0" max="4999" />
-  <button id="h-jump-btn">Jump to Index</button>
-  <button id="h-start-btn">Start (0)</button>
-  <button id="h-end-btn">End</button>
-</div>
+&lt;script type="module"&gt;
+  const list = document.getElementById('my-list');
 
-<runway-grid
-    id="h-list"
-    orientation="horizontal"
-    col-size="120"
-    buffer-size="5"
-></runway-grid>
+  // Template signature: (rowItem, rowIndex, colIndex, rowCount, colCount)
+  list.template = (item, index) =&gt; `&lt;div style="padding: 10px;"&gt;${item}&lt;/div&gt;`;
 
-<h2>4. Infinite scroll (vertical, variable row height)</h2>
-<p style="margin: 0 0 8px; font-size: 13px; color: #666; max-width: 500px;">
-  Starts with a small page of rows and fetches (simulated) more from a "server" as soon as
-  the <strong>buffered</strong> range gets close to the end of the currently loaded data - i.e.
-  before the user actually scrolls to the bottom. New pages are appended via <code>appendData()</code>,
-  so the scroll position is never reset. Row heights vary per item.
-</p>
-<div class="controls">
-  <span id="infinite-status" style="font-size: 13px; color: #666;">Loaded 0 items</span>
-</div>
+  // Setting `data` triggers (re)creation of the underlying registry.
+  list.data = Array.from({ length: 1_000_000 }, (_, i) =&gt; `Item ${i}`);
 
-<runway-grid
-    id="infinite-list"
-    orientation="vertical"
-    row-size="70"
-    buffer-size="5"
-></runway-grid>
-
-<h2>5. Infinite scroll (horizontal, variable column width)</h2>
-<p style="margin: 0 0 8px; font-size: 13px; color: #666; max-width: 700px;">
-  Same idea as demo 4, but along the column axis: <code>appendData()</code> grows the
-  <em>columns</em> (not the rows) when <code>orientation="horizontal"</code>, since the column
-  axis is what carries the items for a horizontal list. Column widths vary per item and are
-  auto-measured, same as demo 3.
-</p>
-<div class="controls">
-  <span id="infinite-h-status" style="font-size: 13px; color: #666;">Loaded 0 items</span>
-</div>
-
-<runway-grid
-    id="infinite-h-list"
-    orientation="horizontal"
-    col-size="120"
-    buffer-size="5"
-></runway-grid>
-
-<h2>6. Sliding window / infinite scroll (vertical, memory-capped)</h2>
-<p style="margin: 0 0 8px; font-size: 13px; color: #666; max-width: 500px;">
-  Combines infinite loading with a hard cap: once a new page is appended via
-  <code>appendData()</code>, if the loaded row count exceeds the cap, the oldest rows are
-  pruned from the top via <code>removeDataFromHead()</code>. The viewport is counter-scrolled
-  by the exact removed pixel height in the same frame, so scrolling stays perfectly smooth
-  even though the array (and the WASM vectors backing it) never grows past the cap - memory
-  usage stays flat forever, no matter how far down the user scrolls.
-</p>
-<div class="controls">
-  <span id="sliding-status" style="font-size: 13px; color: #666;">Loaded 0 items</span>
-</div>
-
-<runway-grid
-    id="sliding-list"
-    orientation="vertical"
-    row-size="70"
-    buffer-size="5"
-></runway-grid>
-
-<h2>7. Sliding window / infinite scroll (horizontal, memory-capped)</h2>
-<p style="margin: 0 0 8px; font-size: 13px; color: #666; max-width: 700px;">
-  Same idea as demo 6, but along the column axis: once a new page is appended via
-  <code>appendData()</code>, columns beyond the cap are pruned from the left via
-  <code>removeDataFromHead()</code>, which counter-scrolls the horizontal axis so nothing
-  jumps. The <code>columnsData</code> array (and the WASM column vectors) never grows past
-  the cap, keeping memory flat during infinite horizontal scrolling.
-</p>
-<div class="controls">
-  <span id="sliding-h-status" style="font-size: 13px; color: #666;">Loaded 0 items</span>
-</div>
-
-<runway-grid
-    id="sliding-h-list"
-    orientation="horizontal"
-    col-size="120"
-    buffer-size="5"
-></runway-grid>
-
-<script type="module">
-  import '../src/runway-grid.js';
-
-  // Escapes HTML special characters so a string can be safely interpolated into an
-  // `innerHTML`-based template without risking XSS, no matter where the value came from.
-  function escapeHtml(value) {
-    return String(value).replace(/[&<>"']/g, (char) => ({
-      '&': '&amp;',
-      '<': '&lt;',
-      '>': '&gt;',
-      '"': '&quot;',
-      "'": '&#39;',
-    }[char]));
-  }
-
-  // ---------------------------------------------------------------------
-  // 1. Vertical list demo
-  // ---------------------------------------------------------------------
-  const virtualScroll = document.getElementById('my-list');
-  const indexInput = document.getElementById('index-input');
-  const jumpBtn = document.getElementById('jump-btn');
-  const startBtn = document.getElementById('start-btn');
-  const endBtn = document.getElementById('end-btn');
-
-  // Generate 1,000,000 items instantly
-  const mockData = Array.from({ length: 1000000 }, (_, i) => `Item string`);
-
-  // Define a highly complex, dynamic layout template.
-  // Signature: (rowItem, rowIndex, colIndex, rowCount, colCount)
-  //
-  // Every string returned below is assigned via `innerHTML` (see the `template` setter), so
-  // any interpolated value is escaped with `escapeHtml()` first, keeping this pattern safe to
-  // reuse even if `item` (or any derived value) ends up coming from an untrusted source.
-  virtualScroll.template = (item, index, colIndex, count) => {
-    // Categorize items into 3 distinct layout behaviors
-    const isHeader = index % 50 === 0;
-    const isCardWithMedia = !isHeader && index % 7 === 0;
-
-    // 1. Dynamic Section Headers
-    if (isHeader) {
-      return `
-        <div class="list-item section-header"
-             style="background: #f0f4f8; padding: 15px 10px; border-left: 4px solid #0070f3; font-weight: bold; color: #333;">
-          ⚡ FEED SEGMENT CRITERIA - BLOCK ${Math.floor(index / 50)}
-        </div>
-      `;
-    }
-
-    // 2. High-Overhead Card Layout (Simulating DOM thrashing with heavy variable text & shapes)
-    if (isCardWithMedia) {
-      const variableParagraph = "Lorem ipsum dolor sit amet, consectetur adipiscing elit. ".repeat((index % 3) + 1);
-      const mediaHeight = 60 + (index % 4) * 20; // Generates dynamic heights: 60px, 80px, 100px, 120px
-
-      return `
-        <div class="list-item interactive-card" data-id="${index}"
-             style="padding: 15px; background: #fff; border-bottom: 2px solid #eaeaea; display: flex; flex-direction: column; gap: 8px;">
-          <div style="display: flex; justify-content: space-between; align-items: center;">
-            <strong style="color: #0070f3;">#️⃣ System Node ID: ${index}</strong>
-            <span style="font-size: 11px; background: #ffeae6; color: #ff3333; padding: 2px 6px; border-radius: 4px; font-family: monospace;">
-              HIGH AROUSAL METRIC
-            </span>
-          </div>
-          <p style="margin: 0; font-size: 13px; color: #666; line-height: 1.4;">${variableParagraph}</p>
-          <div style="width: 100%; height: ${mediaHeight}px; background: linear-gradient(135deg, #0070f3 0%, #00dfd8 100%); border-radius: 6px; opacity: 0.85; display: flex; align-items: center; justify-content: center; color: white; font-weight: 500; font-size: 12px;">
-            Dynamic Media Block (${mediaHeight}px)
-          </div>
-          <div style="display: flex; gap: 10px; margin-top: 4px;">
-            <button onclick="console.debug('Dispatched packet ${index}')" style="padding: 4px 8px; font-size: 12px; cursor: pointer; border: 1px solid #ccc; background: #fff; border-radius: 4px;">Acknowledge</button>
-            <button onclick="this.closest('.interactive-card').style.background='#fdffb6'; console.warn('Bypassed restrictions on ${index}')" style="padding: 4px 8px; font-size: 12px; cursor: pointer; border: 1px solid #ff3333; background: #fff; color: #ff3333; border-radius: 4px;">Bypass Rules</button>
-          </div>
-        </div>
-      `;
-    }
-
-    // 3. Compact Native Baseline Elements
-    return `
-      <div class="list-item standard-row"
-           style="padding: 10px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #eee; font-size: 14px; background: #fafafa;">
-        <span style="font-family: monospace; color: #555;">[Data Entry] ${escapeHtml(item)} -> Pointer ${index}</span>
-        <span style="color: #999; font-size: 12px;">Offset Track: ${(index / count * 100).toFixed(1)}%</span>
-      </div>
-    `;
-  };
-
-  // Bind the row data (orientation="vertical" -> single column, colCount stays 1)
-  virtualScroll.data = mockData;
-
-  // Hook up the control listeners to test scrollToIndex
-  jumpBtn.addEventListener('click', () => {
-    const targetIndex = Number(indexInput.value);
-    virtualScroll.scrollToIndex(targetIndex);
+  list.addEventListener('rangechange', (e) =&gt; {
+    console.log(`Rendering rows ${e.buffered.startRow} to ${e.buffered.endRow}`);
   });
 
-  startBtn.addEventListener('click', () => {
-    virtualScroll.scrollToIndex(0);
+  // Fired if the embedded WASM engine fails to initialize - see "Error handling" below.
+  list.addEventListener('wasmerror', (e) =&gt; {
+    console.error('runway-grid failed to initialize:', e.detail.error);
   });
-
-  endBtn.addEventListener('click', () => {
-    virtualScroll.scrollToIndex(mockData.length - 1);
-  });
-
-  // Listen to the range changes
-  virtualScroll.addEventListener('rangechange', (e) => {
-    console.debug('Range change:', {
-      buffered: `${e.buffered.startRow} to ${e.buffered.endRow}`,
-      viewport: `${e.viewport.startRow} to ${e.viewport.endRow}`
-    });
-  });
-
-  // ---------------------------------------------------------------------
-  // 2. 2D grid demo - independent vertical (rows) + horizontal (columns) panning
-  // ---------------------------------------------------------------------
-  const gridDemo = document.getElementById('grid-demo');
-  const GRID_ROWS = 100000;
-  const GRID_COLS = 500;
-
-  // Column definitions (drives colCount = 500). Must be set before `data` so both
-  // axes are known when the registry is created.
-  gridDemo.columns = Array.from({ length: GRID_COLS }, (_, c) => `Col ${c}`);
-
-  // Row data - each row just needs to exist; actual cell content is computed from
-  // (rowIndex, colIndex) inside the template below.
-  const gridRows = Array.from({ length: GRID_ROWS }, (_, r) => ({ id: r }));
-
-  // Note: `runway-grid` renders cell content inside its own Shadow DOM, so
-  // page-level stylesheet classes (like the light-DOM `.list-item` above) never actually
-  // apply to it - only inline styles (and inherited properties) do. Each cell's box is
-  // individually absolutely-positioned to support independent row/column virtualization,
-  // so an explicit inline `width` matching `col-size` (120px here) is required, otherwise
-  // it shrinks-to-fit around its unstyled text content instead.
-  gridDemo.template = (rowItem, rowIndex, colIndex, rowCount, colCount) => {
-    // Make every 10th row much taller, and every 5th column much wider
-    const isTallRow = rowIndex % 10 === 0;
-    const isWideCol = colIndex % 5 === 0;
-
-    const height = isTallRow ? '150px' : '40px';
-    const width = isWideCol ? '300px' : '120px';
-
-    return `
-      <div style="box-sizing: border-box; width: ${width}; height: ${height}; padding: 8px; border: 1px solid #eee;">
-        R${rowIndex} x C${colIndex}
-      </div>
-    `;
-  };
-
-  gridDemo.data = gridRows;
-
-  document.getElementById('grid-top-left-btn').addEventListener('click', () => {
-    gridDemo.scrollToCell(0, 0);
-  });
-
-  document.getElementById('grid-bottom-right-btn').addEventListener('click', () => {
-    gridDemo.scrollToCell(GRID_ROWS - 1, GRID_COLS - 1);
-  });
-
-  gridDemo.addEventListener('rangechange', (e) => {
-    console.debug('Grid rendering range:', {
-      buffered: `rows ${e.buffered.startRow}-${e.buffered.endRow}, cols ${e.buffered.startCol}-${e.buffered.endCol}`,
-      viewport: `rows ${e.viewport.startRow}-${e.viewport.endRow}, cols ${e.viewport.startCol}-${e.viewport.endCol}`
-    });
-  });
-
-  // ---------------------------------------------------------------------
-  // 3. Horizontal list demo - single row, varying item widths
-  // ---------------------------------------------------------------------
-  const hList = document.getElementById('h-list');
-  const hIndexInput = document.getElementById('h-index-input');
-  const hJumpBtn = document.getElementById('h-jump-btn');
-  const hStartBtn = document.getElementById('h-start-btn');
-  const hEndBtn = document.getElementById('h-end-btn');
-
-  const HORIZONTAL_COUNT = 5000;
-
-  // Chip labels of varying length - each one renders to a different natural width.
-  const hLabels = [
-    'New', 'Featured', 'Popular this week', 'Limited Edition', 'Sale',
-    'Back in Stock', 'Staff Pick', 'Trending Now', 'Almost Gone', 'Best Seller',
-  ];
-  const hColors = ['#0070f3', '#ff3333', '#00a86b', '#ff9900', '#8e44ad'];
-
-  // `columns` drives colCount (for orientation="horizontal" the column axis is the
-  // item axis). Must be set before `data` so colCount is known when the registry
-  // is created.
-  hList.columns = Array.from({ length: HORIZONTAL_COUNT }, (_, i) => i);
-
-  // Row data just needs a single entry: orientation="horizontal" forces rowCount to 1
-  // regardless of array length, and setting `data` is what triggers registry setup.
-  hList.data = [null];
-
-  // Signature: (rowItem, rowIndex, colIndex, rowCount, colCount)
-  // Each cell's own DOM width is left unset (auto/shrink-to-fit), so its rendered
-  // width comes purely from its content - the component measures the actual
-  // rendered width via ResizeObserver and grows/shrinks the virtual column to match
-  // (col-size is only the initial estimate used before the real width is known).
-  hList.template = (rowItem, rowIndex, colIndex, rowCount, colCount) => {
-    const label = hLabels[colIndex % hLabels.length];
-    const color = hColors[colIndex % hColors.length];
-    const isWide = colIndex % 4 === 0;
-    const extra = isWide ? ' \u2014 extended description text to force a much wider chip' : '';
-
-    return `
-      <div style="box-sizing: border-box; height: 100%; padding: 0 16px; display: flex; align-items: center; white-space: nowrap; border-right: 1px solid #eee; background: #fafafa;">
-        <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: ${color}; margin-right: 8px; flex-shrink: 0;"></span>
-        <strong style="font-size: 13px; color: #333;">#${colIndex} ${label}${extra}</strong>
-      </div>
-    `;
-  };
-
-  hJumpBtn.addEventListener('click', () => {
-    const targetIndex = Number(hIndexInput.value);
-    hList.scrollToCell(0, targetIndex);
-  });
-
-  hStartBtn.addEventListener('click', () => {
-    hList.scrollToCell(0, 0);
-  });
-
-  hEndBtn.addEventListener('click', () => {
-    hList.scrollToCell(0, HORIZONTAL_COUNT - 1);
-  });
-
-  hList.addEventListener('rangechange', (e) => {
-    console.debug('Horizontal list rendering range:', {
-      buffered: `cols ${e.buffered.startCol} to ${e.buffered.endCol}`,
-      viewport: `cols ${e.viewport.startCol} to ${e.viewport.endCol}`
-    });
-  });
-
-  // ---------------------------------------------------------------------
-  // 4. Infinite scroll demo - vertical list, variable row height, data fetched
-  //    on demand as the buffered range approaches the end of what's loaded.
-  // ---------------------------------------------------------------------
-  const infiniteList = document.getElementById('infinite-list');
-  const infiniteStatus = document.getElementById('infinite-status');
-
-  // Number of rows fetched per simulated "page".
-  const INFINITE_PAGE_SIZE = 40;
-  // How many rows of runway may still be left in the buffered range before the next page
-  // is requested - large enough that the (simulated) network round-trip resolves and gets
-  // appended well before the user's viewport actually reaches the unloaded tail.
-  const INFINITE_FETCH_THRESHOLD = 15;
-
-  let infiniteFetching = false;
-
-  // Simulates a paginated backend endpoint: resolves after a short network-like delay with
-  // a page of items whose rendered height will vary from row to row (variable line count).
-  function fetchInfinitePage(offset, limit) {
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        const page = Array.from({ length: limit }, (_, i) => {
-          const index = offset + i;
-          return { index, lines: 1 + (index % 4) }; // 1-4 lines of body text -> variable height
-        });
-        resolve(page);
-      }, 400);
-    });
-  }
-
-  function renderInfiniteStatus() {
-    infiniteStatus.textContent = infiniteFetching
-        ? `Loaded ${infiniteList.rows.length} items - fetching more…`
-        : `Loaded ${infiniteList.rows.length} items`;
-  }
-
-  // Fetches the next page and appends it via `appendData()` - preserving the current
-  // scroll position instead of resetting it like assigning `data` would. Also used to
-  // load the very first page, since `appendData()` builds the registry on first use.
-  async function loadMoreInfiniteData() {
-    if (infiniteFetching) return;
-    infiniteFetching = true;
-    renderInfiniteStatus();
-
-    const offset = infiniteList.rows.length;
-    const page = await fetchInfinitePage(offset, INFINITE_PAGE_SIZE);
-
-    infiniteFetching = false;
-    infiniteList.appendData(page);
-    renderInfiniteStatus();
-  }
-
-  // Signature: (rowItem, rowIndex, colIndex, rowCount, colCount)
-  infiniteList.template = (item, index) => {
-    const paragraph = 'Simulated content fetched from the server. '.repeat(item.lines);
-    const hue = (index * 47) % 360;
-
-    return `
-      <div style="box-sizing: border-box; padding: 12px; display: flex; flex-direction: column; gap: 6px; border-bottom: 1px solid #eee; background: ${index % 2 === 0 ? '#fff' : '#fafafa'};">
-        <strong style="color: hsl(${hue}, 65%, 40%);">Row ${index}</strong>
-        <p style="margin: 0; font-size: 13px; color: #555; line-height: 1.4;">${paragraph}</p>
-      </div>
-    `;
-  };
-
-  // Kick off with the first page.
-  loadMoreInfiniteData();
-
-  infiniteList.addEventListener('rangechange', (e) => {
-    renderInfiniteStatus();
-    // Fetch the next page as soon as the *buffered* (off-screen) range gets close to the
-    // end of what's currently loaded - i.e. before the user actually hits the true bottom.
-    if (e.buffered.endRow >= infiniteList.rows.length - INFINITE_FETCH_THRESHOLD) {
-      loadMoreInfiniteData();
-    }
-  });
-
-  // ---------------------------------------------------------------------
-  // 5. Infinite scroll demo - horizontal list, variable column width, data
-  //    fetched on demand as the buffered range approaches the end of what's
-  //    loaded. Mirrors demo 4, but appends along the *column* axis via
-  //    `appendData()`, since `orientation="horizontal"` makes columns the item
-  //    axis (see demo 3) - `rows` stays a single fixed placeholder entry.
-  // ---------------------------------------------------------------------
-  const infiniteHList = document.getElementById('infinite-h-list');
-  const infiniteHStatus = document.getElementById('infinite-h-status');
-
-  // Number of items fetched per simulated "page".
-  const INFINITE_H_PAGE_SIZE = 40;
-  // How many columns of runway may still be left in the buffered range before the next page
-  // is requested - large enough that the (simulated) network round-trip resolves and gets
-  // appended well before the user's viewport actually reaches the unloaded tail.
-  const INFINITE_H_FETCH_THRESHOLD = 15;
-
-  let infiniteHFetching = false;
-
-  // Simulates a paginated backend endpoint, same shape as demo 4's, but each item carries a
-  // variable "width factor" instead of a line count, so the auto-measured column width
-  // (rather than row height) is what ends up varying from item to item.
-  function fetchInfiniteHPage(offset, limit) {
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        const page = Array.from({ length: limit }, (_, i) => {
-          const index = offset + i;
-          return { index, widthFactor: 1 + (index % 4) }; // 1-4x label repeats -> variable width
-        });
-        resolve(page);
-      }, 400);
-    });
-  }
-
-  function renderInfiniteHStatus() {
-    const loadedCount = infiniteHList.columnsData ? infiniteHList.columnsData.length : 0;
-    infiniteHStatus.textContent = infiniteHFetching
-        ? `Loaded ${loadedCount} items - fetching more…`
-        : `Loaded ${loadedCount} items`;
-  }
-
-  // Fetches the next page and appends it via `appendData()`. For `orientation="horizontal"`
-  // this grows the *column* axis (`columnsData`) instead of `rows`, preserving the current
-  // horizontal scroll position instead of resetting it like assigning `columns` would. Also
-  // used to load the very first page, since `appendData()` builds the registry on first use.
-  async function loadMoreInfiniteHData() {
-    if (infiniteHFetching) return;
-    infiniteHFetching = true;
-    renderInfiniteHStatus();
-
-    const offset = infiniteHList.columnsData ? infiniteHList.columnsData.length : 0;
-    const page = await fetchInfiniteHPage(offset, INFINITE_H_PAGE_SIZE);
-
-    infiniteHFetching = false;
-    infiniteHList.appendData(page);
-    renderInfiniteHStatus();
-  }
-
-  // Signature: (rowItem, rowIndex, colIndex, rowCount, colCount). `rowItem` is unused here
-  // (rows is just a fixed single placeholder for a horizontal list) - the actual per-item
-  // data lives in `columnsData`, indexed by `colIndex`.
-  infiniteHList.template = (rowItem, rowIndex, colIndex) => {
-    const entry = infiniteHList.columnsData[colIndex];
-    const hue = (colIndex * 47) % 360;
-    const label = 'Item '.repeat(entry.widthFactor) + `#${entry.index}`;
-
-    return `
-      <div style="box-sizing: border-box; height: 100%; padding: 0 16px; display: flex; align-items: center; white-space: nowrap; border-right: 1px solid #eee; background: ${colIndex % 2 === 0 ? '#fff' : '#fafafa'};">
-        <strong style="color: hsl(${hue}, 65%, 40%);">${label}</strong>
-      </div>
-    `;
-  };
-
-  // Kick off with the first page.
-  loadMoreInfiniteHData();
-
-  infiniteHList.addEventListener('rangechange', (e) => {
-    renderInfiniteHStatus();
-    // Fetch the next page as soon as the *buffered* (off-screen) range gets close to the
-    // end of what's currently loaded - i.e. before the user actually hits the true right edge.
-    const loadedCount = infiniteHList.columnsData ? infiniteHList.columnsData.length : 0;
-    if (e.buffered.endCol >= loadedCount - INFINITE_H_FETCH_THRESHOLD) {
-      loadMoreInfiniteHData();
-    }
-  });
-
-  // ---------------------------------------------------------------------
-  // 6. Sliding window demo - vertical list, memory-capped infinite scroll. Mirrors
-  //    demo 4 (fetch-on-buffered-threshold via appendData()), but immediately after
-  //    each append, prunes the oldest rows from the head via removeDataFromHead() so
-  //    the array (and the WASM row vectors backing it) never grows past a hard cap -
-  //    the user can keep scrolling down forever without memory ever growing.
-  // ---------------------------------------------------------------------
-  const slidingList = document.getElementById('sliding-list');
-  const slidingStatus = document.getElementById('sliding-status');
-
-  // Number of rows fetched per simulated "page".
-  const SLIDING_PAGE_SIZE = 100;
-  // Hard cap on how many rows may be loaded at once - once exceeded, the oldest rows are
-  // pruned from the head so the array (and WASM vectors) never grow past this size.
-  const SLIDING_MAX_ROWS = 1000;
-  // How many rows of runway may still be left in the buffered range before the next page
-  // is requested, same idea as demo 4's threshold.
-  const SLIDING_FETCH_THRESHOLD = 30;
-
-  let slidingFetching = false;
-  // Total rows ever fetched from the "server" - keeps growing forever, even though the
-  // loaded `rows` array itself is capped at SLIDING_MAX_ROWS. Used as the fetch offset (so
-  // every row still gets a unique, ever-increasing absolute index) and to display progress.
-  let slidingTotalFetched = 0;
-
-  // Simulates a paginated backend endpoint, same shape as demo 4's.
-  function fetchSlidingPage(offset, limit) {
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        const page = Array.from({ length: limit }, (_, i) => {
-          const index = offset + i;
-          return { index, lines: 1 + (index % 4) }; // 1-4 lines of body text -> variable height
-        });
-        resolve(page);
-      }, 400);
-    });
-  }
-
-  function renderSlidingStatus() {
-    const suffix = slidingFetching ? ' - fetching more…' : '';
-    slidingStatus.textContent =
-        `Loaded ${slidingList.rows.length} of max ${SLIDING_MAX_ROWS} items (${slidingTotalFetched} fetched total)${suffix}`;
-  }
-
-  // Fetches the next page, appends it via appendData(), then immediately prunes the head
-  // if the cap was exceeded. Both steps happen before renderSlidingStatus() reads back
-  // rows.length, so the displayed count is always the post-prune, capped size.
-  async function loadMoreSlidingData() {
-    if (slidingFetching) return;
-    slidingFetching = true;
-    renderSlidingStatus();
-
-    const page = await fetchSlidingPage(slidingTotalFetched, SLIDING_PAGE_SIZE);
-    slidingTotalFetched += page.length;
-
-    slidingFetching = false;
-    slidingList.appendData(page);
-
-    // Immediately after appending, cap the array at SLIDING_MAX_ROWS by dropping the
-    // oldest rows from the top - removeDataFromHead() counter-scrolls the viewport by the
-    // exact pixel height removed, so this is completely invisible to the user.
-    if (slidingList.rowCount > SLIDING_MAX_ROWS) {
-      slidingList.removeDataFromHead(slidingList.rowCount - SLIDING_MAX_ROWS);
-    }
-
-    renderSlidingStatus();
-  }
-
-  // Signature: (rowItem, rowIndex, colIndex, rowCount, colCount). `rowIndex` is the row's
-  // *local* array position, which keeps shifting down as older rows are pruned from the
-  // head - the stable absolute row number instead comes from the item's own `index`.
-  slidingList.template = (item) => {
-    const paragraph = 'Simulated content fetched from the server. '.repeat(item.lines);
-    const hue = (item.index * 47) % 360;
-
-    return `
-      <div style="box-sizing: border-box; padding: 12px; display: flex; flex-direction: column; gap: 6px; border-bottom: 1px solid #eee; background: ${item.index % 2 === 0 ? '#fff' : '#fafafa'};">
-        <strong style="color: hsl(${hue}, 65%, 40%);">Row ${item.index}</strong>
-        <p style="margin: 0; font-size: 13px; color: #555; line-height: 1.4;">${paragraph}</p>
-      </div>
-    `;
-  };
-
-  // Kick off with the first page.
-  loadMoreSlidingData();
-
-  slidingList.addEventListener('rangechange', (e) => {
-    renderSlidingStatus();
-    // Fetch the next page as soon as the *buffered* (off-screen) range gets close to the
-    // end of what's currently loaded - same trigger as demo 4, just now paired with the
-    // head-pruning above so the loaded set never grows past SLIDING_MAX_ROWS.
-    if (e.buffered.endRow >= slidingList.rows.length - SLIDING_FETCH_THRESHOLD) {
-      loadMoreSlidingData();
-    }
-  });
-
-  // ---------------------------------------------------------------------
-  // 7. Sliding window demo - horizontal list, memory-capped infinite scroll. Mirrors
-  //    demo 6, but along the column axis: appendData() grows columnsData, and once the
-  //    cap is exceeded, removeDataFromHead() prunes the oldest columns from the left.
-  // ---------------------------------------------------------------------
-  const slidingHList = document.getElementById('sliding-h-list');
-  const slidingHStatus = document.getElementById('sliding-h-status');
-
-  // Number of items fetched per simulated "page".
-  const SLIDING_H_PAGE_SIZE = 100;
-  // Hard cap on how many columns may be loaded at once - once exceeded, the oldest columns
-  // are pruned from the head so columnsData (and the WASM column vectors) never grow past
-  // this size.
-  const SLIDING_H_MAX_COLS = 1000;
-  // How many columns of runway may still be left in the buffered range before the next page
-  // is requested, same idea as demo 5's threshold.
-  const SLIDING_H_FETCH_THRESHOLD = 30;
-
-  let slidingHFetching = false;
-  // Total items ever fetched from the "server" - keeps growing forever, even though the
-  // loaded `columnsData` array itself is capped at SLIDING_H_MAX_COLS.
-  let slidingHTotalFetched = 0;
-
-  // Simulates a paginated backend endpoint, same shape as demo 5's.
-  function fetchSlidingHPage(offset, limit) {
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        const page = Array.from({ length: limit }, (_, i) => {
-          const index = offset + i;
-          return { index, widthFactor: 1 + (index % 4) }; // 1-4x label repeats -> variable width
-        });
-        resolve(page);
-      }, 400);
-    });
-  }
-
-  function renderSlidingHStatus() {
-    const loadedCount = slidingHList.columnsData ? slidingHList.columnsData.length : 0;
-    const suffix = slidingHFetching ? ' - fetching more…' : '';
-    slidingHStatus.textContent =
-        `Loaded ${loadedCount} of max ${SLIDING_H_MAX_COLS} items (${slidingHTotalFetched} fetched total)${suffix}`;
-  }
-
-  // Fetches the next page, appends it via appendData(), then immediately prunes the head
-  // if the cap was exceeded, mirroring loadMoreSlidingData() but along the column axis.
-  async function loadMoreSlidingHData() {
-    if (slidingHFetching) return;
-    slidingHFetching = true;
-    renderSlidingHStatus();
-
-    const page = await fetchSlidingHPage(slidingHTotalFetched, SLIDING_H_PAGE_SIZE);
-    slidingHTotalFetched += page.length;
-
-    slidingHFetching = false;
-    slidingHList.appendData(page);
-
-    // Immediately after appending, cap columnsData at SLIDING_H_MAX_COLS by dropping the
-    // oldest columns from the left - removeDataFromHead() counter-scrolls the horizontal
-    // axis by the exact pixel width removed, so this is completely invisible to the user.
-    if (slidingHList.colCount > SLIDING_H_MAX_COLS) {
-      slidingHList.removeDataFromHead(slidingHList.colCount - SLIDING_H_MAX_COLS);
-    }
-
-    renderSlidingHStatus();
-  }
-
-  // Signature: (rowItem, rowIndex, colIndex, rowCount, colCount). `colIndex` is the
-  // column's *local* array position, which keeps shifting as older columns are pruned
-  // from the head - the stable absolute column number instead comes from the entry's own
-  // `index`.
-  slidingHList.template = (rowItem, rowIndex, colIndex) => {
-    const entry = slidingHList.columnsData[colIndex];
-    const hue = (entry.index * 47) % 360;
-    const label = 'Item '.repeat(entry.widthFactor) + `#${entry.index}`;
-
-    return `
-      <div style="box-sizing: border-box; height: 100%; padding: 0 16px; display: flex; align-items: center; white-space: nowrap; border-right: 1px solid #eee; background: ${entry.index % 2 === 0 ? '#fff' : '#fafafa'};">
-        <strong style="color: hsl(${hue}, 65%, 40%);">${label}</strong>
-      </div>
-    `;
-  };
-
-  // Kick off with the first page.
-  loadMoreSlidingHData();
-
-  slidingHList.addEventListener('rangechange', (e) => {
-    renderSlidingHStatus();
-    // Fetch the next page as soon as the *buffered* (off-screen) range gets close to the
-    // end of what's currently loaded - same trigger as demo 5, just now paired with the
-    // head-pruning above so the loaded set never grows past SLIDING_H_MAX_COLS.
-    const loadedCount = slidingHList.columnsData ? slidingHList.columnsData.length : 0;
-    if (e.buffered.endCol >= loadedCount - SLIDING_H_FETCH_THRESHOLD) {
-      loadMoreSlidingHData();
-    }
-  });
-</script>
+&lt;/script&gt;</code></pre>
+  <p class="lede">
+    The <code>&lt;runway-grid&gt;</code> element must be given an explicit size (e.g.
+    <code>height</code>/<code>width</code> via CSS) since it virtualizes its content within its
+    own viewport.
+  </p>
+
+  <h3>Browser support</h3>
+  <p class="lede">
+    <code>runway-grid</code> relies on Custom Elements, Shadow DOM, <code>ResizeObserver</code>,
+    and WebAssembly - all broadly supported in modern evergreen browsers (recent
+    Chrome/Edge/Firefox/Safari), but there is <strong>no IE11 support</strong> and no
+    polyfills/fallbacks are bundled.
+  </p>
+
+  <h2>Examples</h2>
+  <p class="lede">
+    Each example below is a standalone, runnable page - open one directly, or use the nav bar
+    above. Every example page also lists the specific attributes/properties/methods it exercises,
+    and includes a "View source" section with the exact JavaScript used.
+  </p>
+
+  <div class="card-grid">
+    <a class="card" href="examples/01-vertical-list.html">
+      <span class="card-num">EXAMPLE 1</span>
+      <h3>Vertical list</h3>
+      <p>Single column, 1,000,000 rows, mixed variable-height row layouts.</p>
+    </a>
+    <a class="card" href="examples/02-grid-2d.html">
+      <span class="card-num">EXAMPLE 2</span>
+      <h3>2D grid</h3>
+      <p>Independent vertical + horizontal panning over 100,000 x 500 cells.</p>
+    </a>
+    <a class="card" href="examples/03-horizontal-list.html">
+      <span class="card-num">EXAMPLE 3</span>
+      <h3>Horizontal list</h3>
+      <p>Single row, 5,000 chips with auto-measured, varying widths.</p>
+    </a>
+    <a class="card" href="examples/04-infinite-vertical.html">
+      <span class="card-num">EXAMPLE 4</span>
+      <h3>Infinite scroll (vertical)</h3>
+      <p>Fetches more rows via <code>appendData()</code> as the buffered range nears the end.</p>
+    </a>
+    <a class="card" href="examples/05-infinite-horizontal.html">
+      <span class="card-num">EXAMPLE 5</span>
+      <h3>Infinite scroll (horizontal)</h3>
+      <p>Same idea as example 4, but growing the column axis instead of rows.</p>
+    </a>
+    <a class="card" href="examples/06-sliding-vertical.html">
+      <span class="card-num">EXAMPLE 6</span>
+      <h3>Sliding window (vertical)</h3>
+      <p>Infinite scroll capped at 1,000 rows via <code>removeDataFromHead()</code>.</p>
+    </a>
+    <a class="card" href="examples/07-sliding-horizontal.html">
+      <span class="card-num">EXAMPLE 7</span>
+      <h3>Sliding window (horizontal)</h3>
+      <p>Same memory-capping idea as example 6, along the column axis.</p>
+    </a>
+  </div>
+
+  <h2>Attributes</h2>
+  <p class="lede">
+    Attributes are only read once, when the element is constructed/connected (there is no
+    <code>attributeChangedCallback</code>); changing them afterwards has no clean, consistent
+    effect. In practice: <code>buffer-size</code> is actually re-read on every scroll/resize, so
+    changing it later does take effect on the next render; <code>row-size</code>/<code>col-size</code>
+    are re-read for keyboard-scroll increments and as the default size for newly
+    <code>appendData</code>-ed rows/columns, but never retroactively resize rows/columns that
+    already exist; changing <code>orientation</code> after creation does <strong>not</strong>
+    rebuild the underlying registry and will leave it in an inconsistent state. If you need to
+    change any of these, recreate the element instead of mutating its attributes in place.
+  </p>
+  <table>
+    <thead>
+      <tr><th>Attribute</th><th>Default</th><th>Description</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>orientation</code></td><td><code>vertical</code></td><td>One of <code>vertical</code>, <code>horizontal</code>, or <code>both</code>. Controls which axis (or both) is virtualized.</td></tr>
+      <tr><td><code>row-size</code></td><td><code>20</code></td><td>Initial/estimated row height in pixels, used before a row's real height is auto-measured. Falls back to the legacy <code>item-size</code> attribute (deprecated - use <code>row-size</code> instead) if <code>row-size</code> is absent.</td></tr>
+      <tr><td><code>col-size</code></td><td><code>100</code></td><td>Initial/estimated column width in pixels, used before a column's real width is auto-measured.</td></tr>
+      <tr><td><code>buffer-size</code></td><td><code>5</code></td><td>Number of extra rows/columns rendered outside the visible viewport, to reduce blank flashes.</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Properties</h2>
+  <table>
+    <thead>
+      <tr><th>Property</th><th>Type</th><th>Description</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>data</code></td><td><code>Array</code></td><td>The row data. Setting it (re)builds the internal layout registry.</td></tr>
+      <tr><td><code>columns</code></td><td><code>Array | number</code></td><td>The column definitions (or a plain column count). Must be set before <code>data</code> when using <code>horizontal</code>/<code>both</code>.</td></tr>
+      <tr><td><code>template</code></td><td><code>(rowItem, rowIndex, colIndex, rowCount, colCount) =&gt; string | Node</code></td><td>Renders a cell's content. Returning a <code>string</code> sets <code>innerHTML</code>; returning a <code>Node</code> appends it. See the "Security" section below.</td></tr>
+      <tr><td><code>rows</code> <em>(readonly)</em></td><td><code>Array</code></td><td>The row data currently held internally, as set via <code>data</code> or grown/shrunk via <code>appendData</code>/<code>removeDataFromHead</code>.</td></tr>
+      <tr><td><code>columnsData</code> <em>(readonly)</em></td><td><code>Array | null</code></td><td>The column definitions currently held internally (as set via <code>columns</code>), or <code>null</code> when <code>columns</code> was set to a plain count.</td></tr>
+      <tr><td><code>rowCount</code> <em>(readonly)</em></td><td><code>number</code></td><td>Number of rows currently known to the component - the reliable way to read the loaded row count (<code>rows.length</code> when the vertical axis is enabled, <code>1</code> otherwise).</td></tr>
+      <tr><td><code>colCount</code> <em>(readonly)</em></td><td><code>number</code></td><td>Number of columns currently known to the component - the reliable way to read the loaded column count (<code>1</code> when the horizontal axis is disabled).</td></tr>
+      <tr><td><code>wasmInitialized</code> <em>(readonly)</em></td><td><code>boolean</code></td><td>Whether the shared embedded WASM engine finished initializing successfully.</td></tr>
+      <tr><td><code>wasmInitError</code> <em>(readonly)</em></td><td><code>unknown</code></td><td>The error caught while initializing the WASM engine, or <code>null</code> if it hasn't failed. Also available as <code>e.detail.error</code> on the <code>wasmerror</code> event.</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Methods</h2>
+  <table>
+    <thead>
+      <tr><th>Method</th><th>Description</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>scrollToCell(rowIndex, colIndex)</code></td><td>Scrolls so that the given row/column cell is visible, snapping precisely.</td></tr>
+      <tr><td><code>scrollToIndex(index)</code></td><td>Shorthand for <code>scrollToCell(index, 0)</code>, for single-axis lists.</td></tr>
+      <tr><td><code>appendData(newItems)</code></td><td>Non-destructively appends rows (or columns, for <code>orientation="horizontal"</code>), e.g. for infinite scroll, without resetting the scroll position. See examples 4 and 5.</td></tr>
+      <tr><td><code>removeDataFromHead(count)</code></td><td>Non-destructively drops the first <code>count</code> rows (or columns, for <code>orientation="horizontal"</code>), e.g. to cap memory usage for a "sliding window" list, counter-scrolling so nothing jumps. See examples 6 and 7.</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Events</h2>
+  <table>
+    <thead>
+      <tr><th>Event</th><th>Properties</th><th>Description</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>rangechange</code></td><td><code>e.buffered</code>, <code>e.viewport</code></td><td>Fired whenever the rendered range changes. <code>buffered</code> (<code>{ startRow, endRow, startCol, endCol }</code>) includes the off-screen buffer; <code>viewport</code> is the strict on-screen range. Both are exposed directly on the event, not under <code>e.detail</code>.</td></tr>
+      <tr><td><code>wasmerror</code></td><td><code>e.detail.error</code></td><td>Fired if the embedded WASM engine fails to initialize (unsupported browser, CSP blocking <code>atob</code>-decoded binary instantiation, corrupt/incompatible build, etc.). The component never renders in this case; without a listener the failure would otherwise be an unhandled promise rejection with no visible fallback.</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Error handling</h2>
+  <p class="lede">
+    On construction, every <code>&lt;runway-grid&gt;</code> element asynchronously initializes the
+    shared embedded WASM engine (<code>initWasm()</code>). This can fail - e.g. in a browser
+    without WebAssembly support, when a Content-Security-Policy blocks instantiating the
+    <code>atob</code>-decoded binary, or if the embedded build is somehow corrupt/incompatible.
+    That failure is caught internally (so it never surfaces as an unhandled promise rejection),
+    and instead <code>wasmInitError</code> is set and a <code>wasmerror</code> event is dispatched.
+  </p>
+  <pre><code>list.addEventListener('wasmerror', (e) =&gt; {
+  // e.g. render `list.data` as a plain, non-virtualized &lt;ul&gt; here.
+  console.error('runway-grid failed to initialize:', e.detail.error);
+});</code></pre>
+
+  <h2>Security: <code>innerHTML</code> and XSS</h2>
+  <p class="lede">
+    When a <code>template</code> function returns a <code>string</code>, it is assigned to the
+    cell's <code>innerHTML</code> - <strong>not</strong> escaped or treated as plain text. If that
+    string interpolates any value that can be influenced by an untrusted source (user-submitted
+    text, data from a third-party API, URL parameters, etc.), this is a
+    <strong>cross-site scripting (XSS) vulnerability</strong>.
+  </p>
+  <p class="lede">
+    Every example on this site demonstrates the safe pattern: a small <code>escapeHtml()</code>
+    helper (see <a href="assets/shared.js"><code>assets/shared.js</code></a>) runs every
+    interpolated data-derived string through it before interpolating it into a template string.
+    When <code>rowItem</code> (or any derived value) may contain untrusted content, either:
+  </p>
+  <ul class="lede">
+    <li>Escape it before interpolating (e.g. replace <code>&amp; &lt; &gt; " '</code> with their HTML entities), or</li>
+    <li>Avoid <code>innerHTML</code> entirely: build and return a <code>Node</code>/<code>DocumentFragment</code> instead, setting untrusted text via <code>textContent</code>.</li>
+  </ul>
+
+  <h2>Styling</h2>
+  <p class="lede">
+    The component renders into a closed-off shadow tree, so page-level CSS can't reach inside by
+    default. Two standard mechanisms are exposed for customization:
+  </p>
+  <h3>CSS Shadow Parts (<code>::part()</code>)</h3>
+  <table>
+    <thead>
+      <tr><th>Part</th><th>Element</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>container</code></td><td>Outer flex container</td></tr>
+      <tr><td><code>viewport</code></td><td>Scrollable viewport hosting rendered cells</td></tr>
+      <tr><td><code>wrapper</code></td><td>Translated wrapper positioning the rendered cells</td></tr>
+      <tr><td><code>cell</code></td><td>Each individual rendered cell</td></tr>
+      <tr><td><code>track</code></td><td>Both scrollbar tracks (vertical + horizontal)</td></tr>
+      <tr><td><code>track-vertical</code></td><td>The vertical scrollbar track only</td></tr>
+      <tr><td><code>track-horizontal</code></td><td>The horizontal scrollbar track only</td></tr>
+      <tr><td><code>spacer</code></td><td>Both scrollbar spacers (vertical + horizontal)</td></tr>
+      <tr><td><code>spacer-vertical</code></td><td>The vertical scrollbar spacer only</td></tr>
+      <tr><td><code>spacer-horizontal</code></td><td>The horizontal scrollbar spacer only</td></tr>
+    </tbody>
+  </table>
+  <pre><code>runway-grid::part(cell) { border-bottom: 1px solid #eee; }
+runway-grid::part(track) { background: #f5f5f5; }
+runway-grid::part(track-vertical) { background: #eaeaea; }</code></pre>
+
+  <h3>CSS custom properties</h3>
+  <table>
+    <thead>
+      <tr><th>Property</th><th>Default</th><th>Description</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>--runway-grid-scrollbar-size</code></td><td><code>10px</code></td><td>Width of the vertical track / height of the horizontal track.</td></tr>
+    </tbody>
+  </table>
+  <pre><code>runway-grid { --runway-grid-scrollbar-size: 6px; }</code></pre>
+
+  <h2>TypeScript</h2>
+  <p class="lede">
+    <code>runway-grid</code> is authored in plain JavaScript, but ships a hand-written declaration
+    file (<code>dist/runway-grid.d.ts</code>) describing the <code>RunwayGrid</code> class, its
+    attributes/properties/methods, the <code>rangechange</code> event's <code>buffered</code>/<code>viewport</code>
+    properties, and the <code>&lt;runway-grid&gt;</code> tag itself, so
+    <code>document.createElement('runway-grid')</code> and <code>import { RunwayGrid } from 'runway-grid'</code>
+    are fully typed out of the box.
+  </p>
+
+  <p class="lede">See the <a href="https://github.com/">project repository</a> for the full README, source, and license (Apache-2.0).</p>
+</main>
+
+<script type="module" src="assets/shared.js"></script>
 </body>
 </html>
