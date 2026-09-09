@@ -48,12 +48,27 @@ The `<runway-grid>` element must be given an explicit size (e.g. `height`/`width
 
 See the [`demo/`](./demo) folder for complete, runnable examples of all seven usage patterns (vertical list, 2D grid, horizontal list, infinite scroll - both vertical and horizontal - with variable row/column sizes, and infinite scroll with a memory-capped sliding window - both vertical and horizontal).
 
+### Browser support
+
+`runway-grid` relies on Custom Elements, Shadow DOM, `ResizeObserver`, and WebAssembly - all
+broadly supported in modern evergreen browsers (recent Chrome/Edge/Firefox/Safari), but there is
+**no IE11 support** and no polyfills/fallbacks are bundled.
+
 ## Attributes
+
+Attributes are only read once, when the element is constructed/connected (there is no
+`attributeChangedCallback`); changing them afterwards has no clean, consistent effect. In
+practice: `buffer-size` is actually re-read on every scroll/resize, so changing it later does
+take effect on the next render; `row-size`/`col-size` are re-read for keyboard-scroll increments
+and as the default size for newly `appendData`-ed rows/columns, but never retroactively resize
+rows/columns that already exist; changing `orientation` after creation does **not** rebuild the
+underlying registry and will leave it in an inconsistent state. If you need to change any of
+these, recreate the element instead of mutating its attributes in place.
 
 | Attribute      | Default    | Description                                                                                   |
 |----------------|------------|-----------------------------------------------------------------------------------------------|
 | `orientation`  | `vertical` | One of `vertical`, `horizontal`, or `both`. Controls which axis (or both) is virtualized.      |
-| `row-size`     | `20`       | Initial/estimated row height in pixels, used before a row's real height is auto-measured.      |
+| `row-size`     | `20`       | Initial/estimated row height in pixels, used before a row's real height is auto-measured. Falls back to the legacy `item-size` attribute (deprecated - use `row-size` instead) if `row-size` is absent. |
 | `col-size`     | `100`      | Initial/estimated column width in pixels, used before a column's real width is auto-measured.  |
 | `buffer-size`  | `5`        | Number of extra rows/columns rendered outside the visible viewport, to reduce blank flashes.   |
 
@@ -64,6 +79,10 @@ See the [`demo/`](./demo) folder for complete, runnable examples of all seven us
 | `data`             | `Array`                                                                | The row data. Setting it (re)builds the internal layout registry.                                              |
 | `columns`          | `Array \| number`                                                     | The column definitions (or a plain column count). Must be set before `data` when using `horizontal`/`both`.    |
 | `template`         | `(rowItem, rowIndex, colIndex, rowCount, colCount) => string \| Node`  | Renders a cell's content. Returning a `string` sets `innerHTML`; returning a `Node` appends it. **See the "Security: `innerHTML` and XSS" section below.** |
+| `rows`             | `Array` (readonly)                                                     | The row data currently held internally, as set via `data` or grown/shrunk via `appendData`/`removeDataFromHead`. |
+| `columnsData`      | `Array \| null` (readonly)                                            | The column definitions currently held internally (as set via `columns`), or `null` when `columns` was set to a plain count. |
+| `rowCount`         | `number` (readonly)                                                    | Number of rows currently known to the component - the reliable way to read the loaded row count (`rows.length` when the vertical axis is enabled, `1` otherwise). |
+| `colCount`         | `number` (readonly)                                                    | Number of columns currently known to the component - the reliable way to read the loaded column count (`1` when the horizontal axis is disabled). |
 | `wasmInitialized`  | `boolean` (readonly)                                                   | Whether the shared embedded WASM engine finished initializing successfully.                                     |
 | `wasmInitError`    | `unknown` (readonly)                                                   | The error caught while initializing the WASM engine, or `null` if it hasn't failed. Also available as `e.detail.error` on the `wasmerror` event. |
 
