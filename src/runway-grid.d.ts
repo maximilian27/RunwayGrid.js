@@ -1,8 +1,7 @@
 /**
- * Detail payload dispatched with the `rangechange` event, describing the
- * currently rendered row/column range.
+ * A single row/column range (start inclusive, end exclusive).
  */
-export interface RangeChangeDetail {
+export interface RangeChangeCoordinates {
   startRow: number;
   endRow: number;
   startCol: number;
@@ -12,10 +11,23 @@ export interface RangeChangeDetail {
 /**
  * `rangechange` is fired on a `RunwayGrid` element whenever the range of
  * rendered rows/columns changes (e.g. after scrolling, resizing, or a
- * `data`/`columns`/`template` update).
+ * `data`/`columns`/`template` update). `buffered`/`viewport` are exposed as
+ * two distinct coordinate groups directly on the event instance (not nested
+ * under `detail`).
  */
-export interface RangeChangeEvent extends CustomEvent<RangeChangeDetail> {
+export interface RangeChangeEvent extends Event {
   type: 'rangechange';
+  /**
+   * The buffered render range, including the off-screen `bufferSize` items on
+   * each side. Ideal for triggering infinite-scroll data fetches before the
+   * user hits the absolute bottom.
+   */
+  buffered: RangeChangeCoordinates;
+  /**
+   * The strict range excluding the buffer - only the indices actually
+   * intersecting the visible pixels on screen. Ideal for visibility tracking.
+   */
+  viewport: RangeChangeCoordinates;
 }
 
 /**
@@ -77,6 +89,15 @@ export declare class RunwayGrid extends HTMLElement {
    * resets the scroll position to the origin.
    */
   set data(rows: readonly unknown[]);
+
+  /**
+   * Non-destructively appends rows to the existing data set, e.g. for infinite
+   * scroll pagination. Unlike setting `data`, this does not rebuild the
+   * layout registry or reset the scroll position.
+   *
+   * @param newItems The rows to append after the current data set.
+   */
+  appendData(newItems: readonly unknown[]): void;
 
   /**
    * The column definitions, or a plain column count. Must be set before

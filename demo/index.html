@@ -131,7 +131,7 @@
             Dynamic Media Block (${mediaHeight}px)
           </div>
           <div style="display: flex; gap: 10px; margin-top: 4px;">
-            <button onclick="console.log('Dispatched packet ${index}')" style="padding: 4px 8px; font-size: 12px; cursor: pointer; border: 1px solid #ccc; background: #fff; border-radius: 4px;">Acknowledge</button>
+            <button onclick="console.debug('Dispatched packet ${index}')" style="padding: 4px 8px; font-size: 12px; cursor: pointer; border: 1px solid #ccc; background: #fff; border-radius: 4px;">Acknowledge</button>
             <button onclick="this.closest('.interactive-card').style.background='#fdffb6'; console.warn('Bypassed restrictions on ${index}')" style="padding: 4px 8px; font-size: 12px; cursor: pointer; border: 1px solid #ff3333; background: #fff; color: #ff3333; border-radius: 4px;">Bypass Rules</button>
           </div>
         </div>
@@ -167,7 +167,12 @@
 
   // Listen to the range changes
   virtualScroll.addEventListener('rangechange', (e) => {
-    console.log(`Currently rendering rows: ${e.detail.startRow} to ${e.detail.endRow}`);
+    virtualScroll.addEventListener('rangechange', (e) => {
+      console.debug('Range change:', {
+        buffered: `${e.buffered.startRow} to ${e.buffered.endRow}`,
+        viewport: `${e.viewport.startRow} to ${e.viewport.endRow}`
+      });
+    });
   });
 
   // ---------------------------------------------------------------------
@@ -217,9 +222,10 @@
   });
 
   gridDemo.addEventListener('rangechange', (e) => {
-    console.log(
-        `Grid rendering rows ${e.detail.startRow}-${e.detail.endRow}, cols ${e.detail.startCol}-${e.detail.endCol}`
-    );
+    console.debug('Grid rendering range:', {
+      buffered: `rows ${e.buffered.startRow}-${e.buffered.endRow}, cols ${e.buffered.startCol}-${e.buffered.endCol}`,
+      viewport: `rows ${e.viewport.startRow}-${e.viewport.endRow}, cols ${e.viewport.startCol}-${e.viewport.endCol}`
+    });
   });
 
   // ---------------------------------------------------------------------
@@ -282,7 +288,10 @@
   });
 
   hList.addEventListener('rangechange', (e) => {
-    console.log(`Horizontal list rendering cols: ${e.detail.startCol} to ${e.detail.endCol}`);
+    console.debug('Horizontal list rendering range:', {
+      buffered: `cols ${e.buffered.startCol} to ${e.buffered.endCol}`,
+      viewport: `cols ${e.viewport.startCol} to ${e.viewport.endCol}`
+    });
   });
 </script>
 </body>

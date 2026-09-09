@@ -108,8 +108,12 @@ COMPONENT_TEMPLATE.innerHTML = `
  * The `<runway-grid>` custom element. See the module doc for an overview.
  *
  * @fires rangechange - Fired whenever the range of rendered rows/columns changes
- *   (e.g. after scrolling, resizing, or a `data`/`columns`/`template` update), with
- *   `detail: { startRow, endRow, startCol, endCol }`.
+ *   (e.g. after scrolling, resizing, or a `data`/`columns`/`template` update), exposing
+ *   `buffered` and `viewport` directly on the event (not nested under `detail`), where each
+ *   is `{ startRow, endRow, startCol, endCol }`. `buffered` includes the off-screen
+ *   `bufferSize` items on each side (ideal for triggering infinite scroll data fetches);
+ *   `viewport` is the strict range that excludes the buffer, i.e. only the indices
+ *   currently intersecting the visible pixels on screen.
  */
 export class RunwayGrid extends HTMLElement {
   constructor() {
@@ -531,14 +535,29 @@ export class RunwayGrid extends HTMLElement {
         this.horizontalEnabled,
     );
 
-    const { translate_x, translate_y, start_row, end_row, start_col, end_col } = geometry;
+    const {
+      translate_x, translate_y, start_row, end_row, start_col, end_col,
+      viewport_start_row, viewport_end_row, viewport_start_col, viewport_end_col,
+    } = geometry;
     geometry.free();
 
     const roundedTranslateX = Math.round(translate_x);
     const roundedTranslateY = Math.round(translate_y);
 
     this.wrapper.style.transform = `translate3d(${roundedTranslateX}px, ${roundedTranslateY}px, 0)`;
-    this.dispatchEvent(new CustomEvent('rangechange', { detail: { startRow: start_row, endRow: end_row, startCol: start_col, endCol: end_col } }));
+
+    // Note: `buffered`/`viewport` are attached directly on the event instance (rather than
+    // nested under `detail`) since plain properties passed to the `CustomEvent` constructor
+    // are otherwise silently dropped - only `detail` is a recognized `CustomEventInit` member.
+    /** @type {import('./runway-grid.d.ts').RangeChangeEvent} */
+    const rangeChangeEvent = /** @type {any} */ (new CustomEvent('rangechange'));
+    // Buffered range (includes off-screen `bufferSize` items on each side). Ideal for
+    // triggering infinite-scroll data fetches before the user hits the absolute bottom.
+    rangeChangeEvent.buffered = { startRow: start_row, endRow: end_row, startCol: start_col, endCol: end_col };
+    // Strict range excluding the buffer - only the indices actually intersecting the
+    // visible pixels on screen. Ideal for visibility tracking (e.g. impression logging).
+    rangeChangeEvent.viewport = { startRow: viewport_start_row, endRow: viewport_end_row, startCol: viewport_start_col, endCol: viewport_end_col };
+    this.dispatchEvent(rangeChangeEvent);
     this.applyChanges(start_row, end_row, start_col, end_col, translate_y, roundedTranslateY, translate_x, roundedTranslateX);
   }
 
@@ -786,6 +805,29 @@ export class RunwayGrid extends HTMLElement {
    * @param {Array<unknown>} newRows The row data array.
    */
   set data(newRows) { this.rows = newRows || []; this._virtualScrollTop = 0; this._virtualScrollLeft = 0; this.setupRegistry(); }
+
+  /**
+   * Non-destructively appends rows to the existing data set, e.g. for infinite
+   * scroll pagination. Unlike {@link RunwayGrid#data}, this does not rebuild the
+   * WASM registry or reset the scroll position: new default-sized rows are pushed
+   * onto the registry's row axis (preserving every previously auto-measured row
+   * height), the spacer is resized so the native scrollbar track immediately
+   * reflects the new virtual size, and the viewport stays locked at the user's
+   * current read position.
+   *
+   * @param {Array<unknown>} newItems The rows to append after the current data set.
+   */
+  appendData(newItems) {
+    if (!newItems || !newItems.length) return;
+    const count = newItems.length;
+    this.rows = this.rows.concat(newItems);
+
+    if (!this.registry) { this.setupRegistry(); return; }
+
+    this.registry.append_rows(count, this.rowSize);
+    this.updateSpacer();
+    this.calculateIndices();
+  }
 
   /**
    * Sets the column definitions, or a plain column count. Must be set before
