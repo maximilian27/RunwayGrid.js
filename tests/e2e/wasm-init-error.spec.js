@@ -25,10 +25,10 @@ test.describe('runway-grid - WASM initialization error handling', () => {
       WebAssembly.instantiate = () => Promise.reject(new Error('Simulated WASM instantiation failure'));
     });
 
-    await page.goto('/');
+    await page.goto('/examples/01-vertical-list.html');
 
-    // The page defines several `runway-grid` elements up-front (demos 1-7); none of them
-    // should ever finish initializing, and none should throw synchronously while failing.
+    // The page defines a `runway-grid` element up-front (#my-list); it should never finish
+    // initializing, and should never throw synchronously while failing.
     await page.waitForFunction(() => window.__wasmErrors.some((e) => e.id === 'my-list'));
 
     const result = await page.evaluate(() => {

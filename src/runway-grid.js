@@ -62,40 +62,40 @@ COMPONENT_TEMPLATE.innerHTML = `
         height: 100%;
         --runway-grid-scrollbar-size: 10px;
       }
-      .virtual-scroll__container { display: flex; flex-direction: column; width: 100%; height: 100%; position: relative; }
-      .virtual-scroll__row { display: flex; flex: 1; min-height: 0; min-width: 0; position: relative; }
-      .virtual-scroll__viewport { flex: 1; min-width: 0; overflow: hidden; position: relative; outline: none; }
-      .virtual-scroll__wrapper { position: absolute; top: 0; left: 0; will-change: transform; }
-      .virtual-scroll__cell { position: absolute; top: 0; left: 0; }
-      .virtual-scroll__track--vertical { 
+      .runway-grid__container { display: flex; flex-direction: column; width: 100%; height: 100%; position: relative; }
+      .runway-grid__row { display: flex; flex: 1; min-height: 0; min-width: 0; position: relative; }
+      .runway-grid__viewport { flex: 1; min-width: 0; overflow: hidden; position: relative; outline: none; }
+      .runway-grid__wrapper { position: absolute; top: 0; left: 0; will-change: transform; }
+      .runway-grid__cell { position: absolute; top: 0; left: 0; }
+      .runway-grid__track--vertical { 
         flex-shrink: 0; 
         overflow-y: scroll; 
         overflow-x: hidden;
         scrollbar-width: thin;
         width: var(--runway-grid-scrollbar-size, 10px);
        }
-      .virtual-scroll__spacer--vertical { width: 1px; will-change: height; }
-      .virtual-scroll__track--horizontal {
+      .runway-grid__spacer--vertical { width: 1px; will-change: height; }
+      .runway-grid__track--horizontal {
         flex-shrink: 0;
         height: var(--runway-grid-scrollbar-size, 10px);
         overflow-x: scroll; 
         overflow-y: hidden; 
         scrollbar-width: thin;
       }
-      .virtual-scroll__spacer--horizontal { height: 1px; will-change: width; }
-      .virtual-scroll__track--disabled { display: none; }
+      .runway-grid__spacer--horizontal { height: 1px; will-change: width; }
+      .runway-grid__track--disabled { display: none; }
   </style>
-  <div class="virtual-scroll__container" part="container">
-      <div class="virtual-scroll__row" part="row">
-          <div class="virtual-scroll__viewport" part="viewport" tabindex="0">
-              <div class="virtual-scroll__wrapper" part="wrapper"></div>
+  <div class="runway-grid__container" part="container">
+      <div class="runway-grid__row" part="row">
+          <div class="runway-grid__viewport" part="viewport" tabindex="0">
+              <div class="runway-grid__wrapper" part="wrapper"></div>
           </div>
-          <div class="virtual-scroll__track virtual-scroll__track--vertical" part="track track-vertical">
-              <div class="virtual-scroll__spacer virtual-scroll__spacer--vertical" part="spacer spacer-vertical"></div>
+          <div class="runway-grid__track runway-grid__track--vertical" part="track track-vertical">
+              <div class="runway-grid__spacer runway-grid__spacer--vertical" part="spacer spacer-vertical"></div>
           </div>
       </div>
-      <div class="virtual-scroll__track virtual-scroll__track--horizontal" part="track track-horizontal">
-          <div class="virtual-scroll__spacer virtual-scroll__spacer--horizontal" part="spacer spacer-horizontal"></div>
+      <div class="runway-grid__track runway-grid__track--horizontal" part="track track-horizontal">
+          <div class="runway-grid__spacer runway-grid__spacer--horizontal" part="spacer spacer-horizontal"></div>
       </div>
   </div>
 `;
@@ -124,17 +124,17 @@ export class RunwayGrid extends HTMLElement {
 
     // DOM References
     /** @type {HTMLElement} */
-    this.viewport = this.shadowRoot.querySelector('.virtual-scroll__viewport');
+    this.viewport = this.shadowRoot.querySelector('.runway-grid__viewport');
     /** @type {HTMLElement} */
-    this.wrapper = this.shadowRoot.querySelector('.virtual-scroll__wrapper');
+    this.wrapper = this.shadowRoot.querySelector('.runway-grid__wrapper');
     /** @type {HTMLElement} */
-    this.verticalTrack = this.shadowRoot.querySelector('.virtual-scroll__track--vertical');
+    this.verticalTrack = this.shadowRoot.querySelector('.runway-grid__track--vertical');
     /** @type {HTMLElement} */
-    this.verticalSpacer = this.shadowRoot.querySelector('.virtual-scroll__spacer--vertical');
+    this.verticalSpacer = this.shadowRoot.querySelector('.runway-grid__spacer--vertical');
     /** @type {HTMLElement} */
-    this.horizontalTrack = this.shadowRoot.querySelector('.virtual-scroll__track--horizontal');
+    this.horizontalTrack = this.shadowRoot.querySelector('.runway-grid__track--horizontal');
     /** @type {HTMLElement} */
-    this.horizontalSpacer = this.shadowRoot.querySelector('.virtual-scroll__spacer--horizontal');
+    this.horizontalSpacer = this.shadowRoot.querySelector('.runway-grid__spacer--horizontal');
 
     // Internal State
     this.rows = [];
@@ -205,8 +205,8 @@ export class RunwayGrid extends HTMLElement {
     if (this.horizontalTrack) this.horizontalTrack.scrollLeft = 0;
     this._virtualScrollTop = 0;
     this._virtualScrollLeft = 0;
-    this.verticalTrack.classList.toggle('virtual-scroll__track--disabled', !this.verticalEnabled);
-    this.horizontalTrack.classList.toggle('virtual-scroll__track--disabled', !this.horizontalEnabled);
+    this.verticalTrack.classList.toggle('runway-grid__track--disabled', !this.verticalEnabled);
+    this.horizontalTrack.classList.toggle('runway-grid__track--disabled', !this.horizontalEnabled);
     this.calculateIndices();
   }
 
@@ -248,6 +248,9 @@ export class RunwayGrid extends HTMLElement {
     if (this.horizontalEnabled && this.colCount === 0) return;
 
     this.registry = new VirtualScrollRegistry(this.rowCount || 1, this.colCount || 1, this.rowSize, this.colSize);
+    this.viewport.setAttribute('role', 'grid');
+    this.viewport.setAttribute('aria-rowcount', String(this.rowCount));
+    this.viewport.setAttribute('aria-colcount', String(this.colCount));
     this.updateSpacer();
     this.calculateIndices();
   }
@@ -320,6 +323,10 @@ export class RunwayGrid extends HTMLElement {
    * @param {KeyboardEvent} e The keydown event.
    */
   _onKeyDown(e) {
+    // GUARD: Only intercept keys if the user is focused directly on the grid viewport.
+    // This allows inputs/textareas inside cells to function normally.
+    if (e.target !== this.viewport) return;
+
     if (!this.registry) return;
     const maxV = this.registry.get_total_height() - this.viewport.clientHeight;
     const maxH = this.registry.get_total_width() - this.viewport.clientWidth;
@@ -612,7 +619,7 @@ export class RunwayGrid extends HTMLElement {
         }
         while (rowNodes.length < requiredCols) {
           const el = document.createElement('div');
-          el.classList.add('virtual-scroll__cell');
+          el.classList.add('runway-grid__cell');
           el.setAttribute('part', 'cell');
           this.wrapper.appendChild(el);
           rowNodes.push(el);
@@ -653,6 +660,9 @@ export class RunwayGrid extends HTMLElement {
 
           node.setAttribute('data-row', rowIndex);
           node.setAttribute('data-col', colIndex);
+          node.setAttribute('role', 'gridcell');
+          node.setAttribute('aria-rowindex', String(rowIndex + 1));
+          node.setAttribute('aria-colindex', String(colIndex + 1));
           node.innerHTML = '';
 
           const newContent = this.renderItem(this.rows[rowIndex], rowIndex, colIndex, this.rowCount, this.colCount);

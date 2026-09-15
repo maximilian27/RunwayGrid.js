@@ -1,13 +1,13 @@
 import { test, expect } from '@playwright/test';
 
-// Mirrors the vertical-list dataset defined in index.html (#my-list, orientation="vertical").
-// Covers the non-destructive `appendData()` API (infinite scroll support): appending new
+// Mirrors the vertical-list dataset defined in examples/01-vertical-list.html (#my-list,
+// orientation="vertical"). Covers the non-destructive `appendData()` API (infinite scroll support): appending new
 // rows must extend the virtual size without rebuilding the registry or resetting the user's
 // current scroll position, and the `rangechange` event must expose both a buffered and a
 // strict viewport coordinate group.
 test.describe('runway-grid - appendData (non-destructive infinite scroll)', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/examples/01-vertical-list.html');
     await page.waitForFunction(() => {
       const el = document.getElementById('my-list');
       return el && el.registry !== null && el.renderedNodes.length > 0;
@@ -16,7 +16,7 @@ test.describe('runway-grid - appendData (non-destructive infinite scroll)', () =
 
   test('appending rows preserves scroll position and extends the virtual size', async ({ page }) => {
     // Scroll away from the origin first, so a reset back to 0 would be observable.
-    await page.locator('#my-list .virtual-scroll__viewport').hover();
+    await page.locator('#my-list .runway-grid__viewport').hover();
     await page.mouse.wheel(0, 5000);
     await page.waitForTimeout(100);
 
@@ -49,7 +49,7 @@ test.describe('runway-grid - appendData (non-destructive infinite scroll)', () =
     // The scrollbar spacer must be resized to reflect the new virtual size immediately.
     const spacerHeight = await page.evaluate(() => {
       const host = document.getElementById('my-list');
-      return parseFloat(host.shadowRoot.querySelector('.virtual-scroll__spacer--vertical').style.height);
+      return parseFloat(host.shadowRoot.querySelector('.runway-grid__spacer--vertical').style.height);
     });
     expect(spacerHeight).toBeGreaterThan(0);
   });

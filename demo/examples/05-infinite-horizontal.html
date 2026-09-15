@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="light dark" />
+  <script>
+    (function () {
+      const stored = localStorage.getItem('runway-grid-demo-theme');
+      if (stored === 'light' || stored === 'dark') {
+        document.documentElement.setAttribute('data-theme', stored);
+      }
+    })();
+  </script>
+  <title>5. Infinite scroll (horizontal) - runway-grid</title>
+  <link rel="stylesheet" href="../assets/theme.css" />
+  <style>
+    #infinite-h-list {
+      height: 90px;
+      width: 700px;
+    }
+  </style>
+</head>
+<body>
+
+<header class="site-header">
+  <a class="brand" href="../index.html">runway-grid</a>
+  <nav class="site-nav">
+    <a href="../index.html">Overview</a>
+    <a href="01-vertical-list.html">1. Vertical list</a>
+    <a href="02-grid-2d.html">2. 2D grid</a>
+    <a href="03-horizontal-list.html">3. Horizontal list</a>
+    <a href="04-infinite-vertical.html">4. Infinite (vertical)</a>
+    <a href="05-infinite-horizontal.html">5. Infinite (horizontal)</a>
+    <a href="06-sliding-vertical.html">6. Sliding window (vertical)</a>
+    <a href="07-sliding-horizontal.html">7. Sliding window (horizontal)</a>
+  </nav>
+  <button class="theme-toggle" type="button" aria-label="Toggle color theme">Theme</button>
+</header>
+
+<main class="page">
+  <div class="example-nav">
+    <a href="04-infinite-vertical.html">&larr; Previous: Infinite scroll (vertical)</a>
+    <a href="06-sliding-vertical.html">Next: Sliding window (vertical) &rarr;</a>
+  </div>
+
+  <h1>5. Infinite scroll (horizontal, variable column width)</h1>
+  <p class="lede">
+    Same idea as the vertical infinite-scroll example, but along the column axis:
+    <code>appendData()</code> grows the <em>columns</em> (not the rows) when
+    <code>orientation="horizontal"</code>, since the column axis is what carries the items for a
+    horizontal list. Column widths vary per item and are auto-measured, same as the horizontal
+    list example.
+  </p>
+
+  <div class="example-tabs">
+    <div class="tab-bar" role="tablist">
+      <button class="tab-btn active" type="button" data-tab="preview" role="tab" aria-selected="true">Preview</button>
+      <button class="tab-btn" type="button" data-tab="code" role="tab" aria-selected="false">Code</button>
+    </div>
+    <div class="tab-panel active" data-tab="preview" role="tabpanel">
+      <div class="controls">
+        <span id="infinite-h-status" class="status-text">Loaded 0 items</span>
+      </div>
+
+      <runway-grid
+          id="infinite-h-list"
+          orientation="horizontal"
+          col-size="120"
+          buffer-size="5"
+      ></runway-grid>
+    </div>
+    <div class="tab-panel" data-tab="code" role="tabpanel">
+      <div class="code-toolbar">
+        <span class="code-filename">examples/05-infinite-horizontal.html</span>
+        <button class="copy-btn" type="button">Copy</button>
+      </div>
+      <pre class="code-editor"><code class="code-block"></code></pre>
+    </div>
+  </div>
+
+  <h2>API used in this example</h2>
+  <table>
+    <thead><tr><th>API</th><th>Usage</th></tr></thead>
+    <tbody>
+      <tr><td><code>appendData(newItems)</code></td><td>For <code>orientation="horizontal"</code>, grows <code>columnsData</code> instead of <code>rows</code>, preserving horizontal scroll position.</td></tr>
+      <tr><td><code>columnsData</code> <em>(readonly)</em></td><td>Read to compute the fetch <code>offset</code>/loaded count, and indexed by <code>colIndex</code> inside <code>template</code>.</td></tr>
+      <tr><td><code>rangechange</code></td><td><code>e.buffered.endCol</code> is compared against <code>columnsData.length</code> to decide when to fetch the next page.</td></tr>
+    </tbody>
+  </table>
+
+  <p class="lede">
+    Switch to the <strong>Code</strong> tab above for the exact markup and script behind this
+    example - every example on this site is a plain, standalone HTML file with an inline
+    <code>&lt;script type="module"&gt;</code>.
+  </p>
+</main>
+
+<script type="module" src="../assets/shared.js"></script>
+<script type="module">
+  // Feeds the Code tab the exact, unbundled source of ./05-infinite-horizontal.js - see
+  // `registerExampleScript()` in assets/shared.js for why this indirection is needed.
+  import rawExampleSource from './05-infinite-horizontal.js?raw';
+  import { registerExampleScript } from '../assets/shared.js';
+  registerExampleScript(rawExampleSource);
+</script>
+<script type="module" src="./05-infinite-horizontal.js"></script>
+</body>
+</html>

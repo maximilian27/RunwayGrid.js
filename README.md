@@ -46,7 +46,7 @@ import 'runway-grid';
 
 The `<runway-grid>` element must be given an explicit size (e.g. `height`/`width` via CSS) since it virtualizes its content within its own viewport.
 
-See the [`demo/`](./demo) folder for complete, runnable examples of all seven usage patterns (vertical list, 2D grid, horizontal list, infinite scroll - both vertical and horizontal - with variable row/column sizes, and infinite scroll with a memory-capped sliding window - both vertical and horizontal).
+See the [`demo/`](./demo) folder for a full documentation site with complete, runnable examples of all seven usage patterns (vertical list, 2D grid, horizontal list, infinite scroll - both vertical and horizontal - with variable row/column sizes, and infinite scroll with a memory-capped sliding window - both vertical and horizontal), each on its own page under [`demo/examples/`](./demo/examples), plus an API reference and a system-based (light/dark) color theme. Every example page has "Preview" and "Code" tabs - the Code tab shows the exact markup/script for that example, syntax-highlighted in an IDE-like viewer with line numbers and a copy button. Open [`demo/index.html`](./demo/index.html) to browse it.
 
 ### Browser support
 
@@ -132,14 +132,57 @@ influenced by an untrusted source (user-submitted text, data from a third-party 
 parameters, etc.), this is a **cross-site scripting (XSS) vulnerability**: an attacker-controlled
 value such as `<img src=x onerror=alert(1)>` would execute as HTML/JS in the page.
 
-The [`demo/`](./demo) folder demonstrates the safe pattern: it defines a small `escapeHtml()`
-helper and runs every interpolated data-derived string (e.g. `${item}` in demo 1's baseline row)
-through it before interpolating it into a template string. When `rowItem` (or any derived value)
-may contain untrusted content, either:
+The [`demo/`](./demo) folder demonstrates the safe pattern: [`demo/assets/shared.js`](./demo/assets/shared.js)
+defines a small `escapeHtml()` helper, and every example (e.g. `${item}` in
+[`demo/examples/01-vertical-list.html`](./demo/examples/01-vertical-list.html)'s baseline row)
+runs interpolated data-derived strings through it before interpolating them into a template
+string. When `rowItem` (or any derived value) may contain untrusted content, either:
 
 - Escape it before interpolating (e.g. replace `&`, `<`, `>`, `"`, `'` with their HTML entities), or
 - Avoid `innerHTML` entirely: build and return a `Node`/`DocumentFragment` instead, setting
   untrusted text via `textContent` (which is never parsed as HTML).
+
+## Accessibility
+
+`<runway-grid>` applies ARIA grid semantics automatically, since only a small pool of ~30 DOM
+nodes is ever recycled to render an arbitrarily large dataset:
+
+- The viewport gets `role="grid"`, plus `aria-rowcount`/`aria-colcount` set to the *true*
+  `rowCount`/`colCount` (not the number of DOM nodes actually mounted), so assistive technology
+  announces the real size of the virtualized dataset.
+- Each recycled cell gets `role="gridcell"` and 1-based `aria-rowindex`/`aria-colindex`
+  attributes reflecting its true position in the full dataset, updated every time the cell is
+  recycled to render a different row/column.
+
+If a cell's `template` renders interactive content (e.g. an `<input>` or `<button>`), the
+component's own keyboard handling (arrow keys, Page Up/Down, Home/End) only intercepts key
+events that originate directly on the viewport itself - any key event whose target is a
+descendant (like a focused `<input>` inside a cell) is ignored, so typing/interacting with
+nested controls works normally instead of being hijacked by grid navigation.
+
+## SEO / Crawler Fallback
+
+Search engine crawlers don't scroll, so they only ever see the small pool of DOM nodes
+`<runway-grid>` has mounted at load time - not the full (potentially huge) dataset. The
+component intentionally does **not** touch the URL or routing state to work around this (that's
+application-level state the component has no business owning); instead, pair it with a standard
+`<noscript>` pagination fallback that crawlers will follow instead:
+
+```html
+<runway-grid id="my-grid"></runway-grid>
+
+<!-- SEO Fallback: Crawlers follow these links; users never see them -->
+<noscript>
+  <a href="/data?page=1">Page 1</a>
+  <a href="/data?page=2">Page 2</a>
+  <a href="/data?page=3">Page 3</a>
+</noscript>
+```
+
+Consumers are responsible for syncing their own URL parameters (e.g. `?page=2`) to the grid's
+initial scroll position - for example, by reading the page number on load and calling
+`grid.scrollToIndex()` (or `scrollToCell()`) with the corresponding row/column index once `data`
+has been set.
 
 ## TypeScript
 

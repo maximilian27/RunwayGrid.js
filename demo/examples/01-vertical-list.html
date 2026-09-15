@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="light dark" />
+  <script>
+    (function () {
+      const stored = localStorage.getItem('runway-grid-demo-theme');
+      if (stored === 'light' || stored === 'dark') {
+        document.documentElement.setAttribute('data-theme', stored);
+      }
+    })();
+  </script>
+  <title>1. Vertical list - runway-grid</title>
+  <link rel="stylesheet" href="../assets/theme.css" />
+</head>
+<body>
+
+<header class="site-header">
+  <a class="brand" href="../index.html">runway-grid</a>
+  <nav class="site-nav">
+    <a href="../index.html">Overview</a>
+    <a href="01-vertical-list.html">1. Vertical list</a>
+    <a href="02-grid-2d.html">2. 2D grid</a>
+    <a href="03-horizontal-list.html">3. Horizontal list</a>
+    <a href="04-infinite-vertical.html">4. Infinite (vertical)</a>
+    <a href="05-infinite-horizontal.html">5. Infinite (horizontal)</a>
+    <a href="06-sliding-vertical.html">6. Sliding window (vertical)</a>
+    <a href="07-sliding-horizontal.html">7. Sliding window (horizontal)</a>
+  </nav>
+  <button class="theme-toggle" type="button" aria-label="Toggle color theme">Theme</button>
+</header>
+
+<main class="page">
+  <div class="example-nav">
+    <a href="../index.html">&larr; Overview</a>
+    <a href="02-grid-2d.html">Next: 2D grid &rarr;</a>
+  </div>
+
+  <h1>1. Vertical list (single column)</h1>
+  <p class="lede">
+    A single-column, vertically virtualized list over 1,000,000 rows. The <code>template</code>
+    function switches between three distinct row layouts (section header, media card, compact
+    row) based on the row index, to show that row heights can vary arbitrarily and are
+    auto-measured. Data-derived text is run through <code>escapeHtml()</code> before being
+    interpolated into the <code>innerHTML</code> template string.
+  </p>
+
+  <div class="example-tabs">
+    <div class="tab-bar" role="tablist">
+      <button class="tab-btn active" type="button" data-tab="preview" role="tab" aria-selected="true">Preview</button>
+      <button class="tab-btn" type="button" data-tab="code" role="tab" aria-selected="false">Code</button>
+    </div>
+    <div class="tab-panel active" data-tab="preview" role="tabpanel">
+      <div class="controls">
+        <input type="number" id="index-input" value="50000" min="0" max="999999" />
+        <button id="jump-btn">Jump to Index</button>
+        <button id="start-btn">Top (0)</button>
+        <button id="end-btn">End</button>
+      </div>
+
+      <runway-grid
+          id="my-list"
+          orientation="vertical"
+          row-size="20"
+          buffer-size="5"
+      ></runway-grid>
+    </div>
+    <div class="tab-panel" data-tab="code" role="tabpanel">
+      <div class="code-toolbar">
+        <span class="code-filename">examples/01-vertical-list.html</span>
+        <button class="copy-btn" type="button">Copy</button>
+      </div>
+      <pre class="code-editor"><code class="code-block"></code></pre>
+    </div>
+  </div>
+
+  <h2>API used in this example</h2>
+  <table>
+    <thead><tr><th>API</th><th>Usage</th></tr></thead>
+    <tbody>
+      <tr><td><code>orientation</code></td><td>Set to <code>"vertical"</code> - only the row axis is virtualized.</td></tr>
+      <tr><td><code>row-size</code></td><td>Initial row height estimate (<code>20</code>px) before real heights are auto-measured.</td></tr>
+      <tr><td><code>buffer-size</code></td><td><code>5</code> extra rows rendered outside the viewport on each side.</td></tr>
+      <tr><td><code>template</code></td><td>Renders one of three row layouts depending on <code>index</code>.</td></tr>
+      <tr><td><code>data</code></td><td>Bound to a 1,000,000-item mock array.</td></tr>
+      <tr><td><code>scrollToIndex(index)</code></td><td>Used by the Jump/Top/End buttons.</td></tr>
+      <tr><td><code>rangechange</code></td><td>Logged to the console with both <code>e.buffered</code> and <code>e.viewport</code>.</td></tr>
+    </tbody>
+  </table>
+
+  <p class="lede">
+    Switch to the <strong>Code</strong> tab above for the exact markup and script behind this
+    example - every example on this site is a plain, standalone HTML file with an inline
+    <code>&lt;script type="module"&gt;</code>.
+  </p>
+</main>
+
+<script type="module" src="../assets/shared.js"></script>
+<script type="module">
+  // Feeds the Code tab the exact, unbundled source of ./01-vertical-list.js - see
+  // `registerExampleScript()` in assets/shared.js for why this indirection is needed.
+  import rawExampleSource from './01-vertical-list.js?raw';
+  import { registerExampleScript } from '../assets/shared.js';
+  registerExampleScript(rawExampleSource);
+</script>
+<script type="module" src="./01-vertical-list.js"></script>
+</body>
+</html>

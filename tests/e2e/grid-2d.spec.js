@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 
-// Mirrors the 2D grid dataset defined in index.html (#grid-demo, orientation="both").
+// Mirrors the 2D grid dataset defined in examples/02-grid-2d.html (#grid-demo, orientation="both").
 const GRID_ROWS = 100000;
 const GRID_COLS = 500;
 const LAST_ROW = GRID_ROWS - 1;
@@ -8,10 +8,10 @@ const LAST_COL = GRID_COLS - 1;
 
 test.describe('runway-grid - 2D grid (independent vertical + horizontal panning)', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/examples/02-grid-2d.html');
 
     // Wait until the WASM registry is ready and the initial range has rendered before
-    // attaching the listener - deferred module scripts (like index.html's) run before
+    // attaching the listener - deferred module scripts (like this page's) run before
     // `DOMContentLoaded`, so anything gated on that event would already miss the very
     // first `rangechange`. Forcing one fresh `calculateIndices()` call right after
     // attaching guarantees an up-to-date event to observe from a known starting point.
@@ -32,13 +32,13 @@ test.describe('runway-grid - 2D grid (independent vertical + horizontal panning)
   });
 
   test('both native scroll tracks are present and active for orientation="both"', async ({ page }) => {
-    const verticalTrack = page.locator('#grid-demo .virtual-scroll__track--vertical');
-    const horizontalTrack = page.locator('#grid-demo .virtual-scroll__track--horizontal');
+    const verticalTrack = page.locator('#grid-demo .runway-grid__track--vertical');
+    const horizontalTrack = page.locator('#grid-demo .runway-grid__track--horizontal');
 
     await expect(verticalTrack).toBeVisible();
     await expect(horizontalTrack).toBeVisible();
-    await expect(verticalTrack).not.toHaveClass(/virtual-scroll__track--disabled/);
-    await expect(horizontalTrack).not.toHaveClass(/virtual-scroll__track--disabled/);
+    await expect(verticalTrack).not.toHaveClass(/runway-grid__track--disabled/);
+    await expect(horizontalTrack).not.toHaveClass(/runway-grid__track--disabled/);
   });
 
   test('panning the horizontal axis does not move the vertical axis, and vice versa', async ({ page }) => {
@@ -49,7 +49,7 @@ test.describe('runway-grid - 2D grid (independent vertical + horizontal panning)
     // Drag the horizontal track forward - only the column window should move.
     await page.evaluate(() => {
       const host = document.getElementById('grid-demo');
-      const track = host.shadowRoot.querySelector('.virtual-scroll__track--horizontal');
+      const track = host.shadowRoot.querySelector('.runway-grid__track--horizontal');
       track.scrollLeft = Math.floor(track.scrollWidth / 2);
     });
 
@@ -62,7 +62,7 @@ test.describe('runway-grid - 2D grid (independent vertical + horizontal panning)
     // column window reached by the previous pan must stay put.
     await page.evaluate(() => {
       const host = document.getElementById('grid-demo');
-      const track = host.shadowRoot.querySelector('.virtual-scroll__track--vertical');
+      const track = host.shadowRoot.querySelector('.runway-grid__track--vertical');
       track.scrollTop = Math.floor(track.scrollHeight / 2);
     });
 
@@ -82,7 +82,7 @@ test.describe('runway-grid - 2D grid (independent vertical + horizontal panning)
         { rows: GRID_ROWS, cols: GRID_COLS },
     );
 
-    const viewport = page.locator('#grid-demo .virtual-scroll__viewport');
+    const viewport = page.locator('#grid-demo .runway-grid__viewport');
     const lastCell = page.locator(`#grid-demo [data-row="${LAST_ROW}"][data-col="${LAST_COL}"]`);
     await expect(lastCell).toBeAttached();
 
@@ -111,7 +111,7 @@ test.describe('runway-grid - 2D grid (independent vertical + horizontal panning)
   test('dragging the horizontal scrollbar track to the right reaches the true last column without clipping', async ({ page }) => {
     await page.evaluate(() => {
       const host = document.getElementById('grid-demo');
-      const track = host.shadowRoot.querySelector('.virtual-scroll__track--horizontal');
+      const track = host.shadowRoot.querySelector('.runway-grid__track--horizontal');
       track.scrollLeft = track.scrollWidth;
     });
 
@@ -120,7 +120,7 @@ test.describe('runway-grid - 2D grid (independent vertical + horizontal panning)
         GRID_COLS,
     );
 
-    const viewport = page.locator('#grid-demo .virtual-scroll__viewport');
+    const viewport = page.locator('#grid-demo .runway-grid__viewport');
     const lastColNode = page.locator(`#grid-demo [data-col="${LAST_COL}"]`).first();
     await expect(lastColNode).toBeAttached();
 

@@ -1,8 +1,9 @@
 import { test, expect } from '@playwright/test';
 
-// Mirrors the vertical-list dataset defined in index.html (#my-list, orientation="vertical").
-// Its `template` produces highly variable row heights (plain rows, tall "card" rows, and
-// section headers), so most rows are never measured until actually rendered.
+// Mirrors the vertical-list dataset defined in examples/01-vertical-list.html (#my-list,
+// orientation="vertical"). Its `template` produces highly variable row heights (plain rows,
+// tall "card" rows, and section headers), so most rows are never measured until actually
+// rendered.
 const TARGET_INDEX = 50000;
 
 // Regression coverage for: "jump to index does not work correctly on the first attempt -
@@ -16,7 +17,7 @@ const TARGET_INDEX = 50000;
 // a single `scrollToCell()` call.
 test.describe('runway-grid - jump to index after a prior scroll', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/examples/01-vertical-list.html');
     await page.waitForFunction(() => {
       const el = document.getElementById('my-list');
       return el && el.registry !== null && el.renderedNodes.length > 0;
@@ -26,7 +27,7 @@ test.describe('runway-grid - jump to index after a prior scroll', () => {
   test('a single scrollToIndex call already lands at its fully-settled position', async ({ page }) => {
     // Scroll the area a little first, so the jump target is still an entirely
     // unmeasured, distant region - exactly the reported reproduction scenario.
-    await page.locator('#my-list .virtual-scroll__viewport').hover();
+    await page.locator('#my-list .runway-grid__viewport').hover();
     await page.mouse.wheel(0, 3000);
     await page.waitForTimeout(100);
 
@@ -50,7 +51,7 @@ test.describe('runway-grid - jump to index after a prior scroll', () => {
 
     // The target row must actually be rendered and fully contained within the viewport
     // (not scrolled past it, not clipped above/below it).
-    const viewport = page.locator('#my-list .virtual-scroll__viewport');
+    const viewport = page.locator('#my-list .runway-grid__viewport');
     const targetNode = page.locator(`#my-list [data-row="${TARGET_INDEX}"]`);
     await expect(targetNode).toBeAttached();
 
