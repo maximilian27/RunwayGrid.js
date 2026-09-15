@@ -16,7 +16,7 @@ test.describe('runway-grid - appendData (non-destructive infinite scroll)', () =
 
   test('appending rows preserves scroll position and extends the virtual size', async ({ page }) => {
     // Scroll away from the origin first, so a reset back to 0 would be observable.
-    await page.locator('#my-list .virtual-scroll__viewport').hover();
+    await page.locator('#my-list .runway-grid__viewport').hover();
     await page.mouse.wheel(0, 5000);
     await page.waitForTimeout(100);
 
@@ -49,7 +49,7 @@ test.describe('runway-grid - appendData (non-destructive infinite scroll)', () =
     // The scrollbar spacer must be resized to reflect the new virtual size immediately.
     const spacerHeight = await page.evaluate(() => {
       const host = document.getElementById('my-list');
-      return parseFloat(host.shadowRoot.querySelector('.virtual-scroll__spacer--vertical').style.height);
+      return parseFloat(host.shadowRoot.querySelector('.runway-grid__spacer--vertical').style.height);
     });
     expect(spacerHeight).toBeGreaterThan(0);
   });

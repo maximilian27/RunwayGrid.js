@@ -37,7 +37,7 @@ test.describe('runway-grid - reaching the true end (vertical axis)', () => {
         TOTAL_ITEMS,
     );
 
-    const viewport = page.locator('#my-list .virtual-scroll__viewport');
+    const viewport = page.locator('#my-list .runway-grid__viewport');
     const lastNode = page.locator(`#my-list [data-row="${LAST_INDEX}"]`);
     await expect(lastNode).toBeAttached();
 
@@ -55,7 +55,7 @@ test.describe('runway-grid - reaching the true end (vertical axis)', () => {
   }
 
   test('keyboard End reaches the true last row without clipping', async ({ page }) => {
-    await page.locator('#my-list .virtual-scroll__viewport').focus();
+    await page.locator('#my-list .runway-grid__viewport').focus();
     await page.keyboard.press('End');
 
     await expectLandedFullyAtEnd(page);
@@ -64,7 +64,7 @@ test.describe('runway-grid - reaching the true end (vertical axis)', () => {
   test('mouse wheel scroll-to-bottom reaches the true last row without clipping', async ({ page }) => {
     // A single, very large deltaY mimics an aggressive flick straight to the bottom;
     // the handler clamps the result to the true virtual max regardless of magnitude.
-    await page.locator('#my-list .virtual-scroll__viewport').hover();
+    await page.locator('#my-list .runway-grid__viewport').hover();
     await page.mouse.wheel(0, 1_000_000_000);
 
     await expectLandedFullyAtEnd(page);
@@ -77,7 +77,7 @@ test.describe('runway-grid - reaching the true end (vertical axis)', () => {
     // same native `scroll` event the real drag interaction relies on.
     await page.evaluate(() => {
       const host = document.getElementById('my-list');
-      const track = host.shadowRoot.querySelector('.virtual-scroll__track--vertical');
+      const track = host.shadowRoot.querySelector('.runway-grid__track--vertical');
       track.scrollTop = track.scrollHeight;
     });
 
@@ -91,7 +91,7 @@ test.describe('runway-grid - reaching the true end (vertical axis)', () => {
     // of leaving the user stuck slightly before the true last row.
     await page.evaluate(() => {
       const host = document.getElementById('my-list');
-      const track = host.shadowRoot.querySelector('.virtual-scroll__track--vertical');
+      const track = host.shadowRoot.querySelector('.runway-grid__track--vertical');
       track.scrollTop = track.scrollHeight - track.clientHeight - 1;
       track.dispatchEvent(new Event('scroll'));
     });

@@ -142,6 +142,48 @@ string. When `rowItem` (or any derived value) may contain untrusted content, eit
 - Avoid `innerHTML` entirely: build and return a `Node`/`DocumentFragment` instead, setting
   untrusted text via `textContent` (which is never parsed as HTML).
 
+## Accessibility
+
+`<runway-grid>` applies ARIA grid semantics automatically, since only a small pool of ~30 DOM
+nodes is ever recycled to render an arbitrarily large dataset:
+
+- The viewport gets `role="grid"`, plus `aria-rowcount`/`aria-colcount` set to the *true*
+  `rowCount`/`colCount` (not the number of DOM nodes actually mounted), so assistive technology
+  announces the real size of the virtualized dataset.
+- Each recycled cell gets `role="gridcell"` and 1-based `aria-rowindex`/`aria-colindex`
+  attributes reflecting its true position in the full dataset, updated every time the cell is
+  recycled to render a different row/column.
+
+If a cell's `template` renders interactive content (e.g. an `<input>` or `<button>`), the
+component's own keyboard handling (arrow keys, Page Up/Down, Home/End) only intercepts key
+events that originate directly on the viewport itself - any key event whose target is a
+descendant (like a focused `<input>` inside a cell) is ignored, so typing/interacting with
+nested controls works normally instead of being hijacked by grid navigation.
+
+## SEO / Crawler Fallback
+
+Search engine crawlers don't scroll, so they only ever see the small pool of DOM nodes
+`<runway-grid>` has mounted at load time - not the full (potentially huge) dataset. The
+component intentionally does **not** touch the URL or routing state to work around this (that's
+application-level state the component has no business owning); instead, pair it with a standard
+`<noscript>` pagination fallback that crawlers will follow instead:
+
+```html
+<runway-grid id="my-grid"></runway-grid>
+
+<!-- SEO Fallback: Crawlers follow these links; users never see them -->
+<noscript>
+  <a href="/data?page=1">Page 1</a>
+  <a href="/data?page=2">Page 2</a>
+  <a href="/data?page=3">Page 3</a>
+</noscript>
+```
+
+Consumers are responsible for syncing their own URL parameters (e.g. `?page=2`) to the grid's
+initial scroll position - for example, by reading the page number on load and calling
+`grid.scrollToIndex()` (or `scrollToCell()`) with the corresponding row/column index once `data`
+has been set.
+
 ## TypeScript
 
 `runway-grid` is authored in plain JavaScript, but ships a hand-written declaration file (`dist/runway-grid.d.ts`, wired up via `package.json`'s `types`/`exports.types` fields) describing the `RunwayGrid` class, its attributes/properties/methods, the `rangechange` event's `buffered`/`viewport` properties, and the `<runway-grid>` tag itself (via `HTMLElementTagNameMap`), so `document.createElement('runway-grid')`/`querySelector('runway-grid')` and `import { RunwayGrid } from 'runway-grid'` are fully typed out of the box - no `@types/*` package needed.

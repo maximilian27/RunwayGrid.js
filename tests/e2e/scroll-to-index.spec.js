@@ -27,7 +27,7 @@ test.describe('runway-grid - jump to index after a prior scroll', () => {
   test('a single scrollToIndex call already lands at its fully-settled position', async ({ page }) => {
     // Scroll the area a little first, so the jump target is still an entirely
     // unmeasured, distant region - exactly the reported reproduction scenario.
-    await page.locator('#my-list .virtual-scroll__viewport').hover();
+    await page.locator('#my-list .runway-grid__viewport').hover();
     await page.mouse.wheel(0, 3000);
     await page.waitForTimeout(100);
 
@@ -51,7 +51,7 @@ test.describe('runway-grid - jump to index after a prior scroll', () => {
 
     // The target row must actually be rendered and fully contained within the viewport
     // (not scrolled past it, not clipped above/below it).
-    const viewport = page.locator('#my-list .virtual-scroll__viewport');
+    const viewport = page.locator('#my-list .runway-grid__viewport');
     const targetNode = page.locator(`#my-list [data-row="${TARGET_INDEX}"]`);
     await expect(targetNode).toBeAttached();
 

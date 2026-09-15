@@ -226,6 +226,48 @@
     <li>Avoid <code>innerHTML</code> entirely: build and return a <code>Node</code>/<code>DocumentFragment</code> instead, setting untrusted text via <code>textContent</code>.</li>
   </ul>
 
+  <h2>Accessibility</h2>
+  <p class="lede">
+    <code>&lt;runway-grid&gt;</code> applies ARIA grid semantics automatically, since only a small
+    pool of ~30 DOM nodes is ever recycled to render an arbitrarily large dataset:
+  </p>
+  <ul class="lede">
+    <li>The viewport gets <code>role="grid"</code>, plus <code>aria-rowcount</code>/<code>aria-colcount</code> set to the <em>true</em> <code>rowCount</code>/<code>colCount</code> (not the number of DOM nodes actually mounted), so assistive technology announces the real size of the virtualized dataset.</li>
+    <li>Each recycled cell gets <code>role="gridcell"</code> and 1-based <code>aria-rowindex</code>/<code>aria-colindex</code> attributes reflecting its true position in the full dataset, updated every time the cell is recycled to render a different row/column.</li>
+  </ul>
+  <p class="lede">
+    If a cell's <code>template</code> renders interactive content (e.g. an <code>&lt;input&gt;</code>
+    or <code>&lt;button&gt;</code>), the component's own keyboard handling (arrow keys, Page
+    Up/Down, Home/End) only intercepts key events that originate directly on the viewport itself -
+    any key event whose target is a descendant (like a focused <code>&lt;input&gt;</code> inside a
+    cell) is ignored, so typing/interacting with nested controls works normally instead of being
+    hijacked by grid navigation.
+  </p>
+
+  <h2>SEO / Crawler Fallback</h2>
+  <p class="lede">
+    Search engine crawlers don't scroll, so they only ever see the small pool of DOM nodes
+    <code>&lt;runway-grid&gt;</code> has mounted at load time - not the full (potentially huge)
+    dataset. The component intentionally does <strong>not</strong> touch the URL or routing state
+    to work around this (that's application-level state the component has no business owning);
+    instead, pair it with a standard <code>&lt;noscript&gt;</code> pagination fallback that
+    crawlers will follow instead:
+  </p>
+  <pre><code>&lt;runway-grid id="my-grid"&gt;&lt;/runway-grid&gt;
+
+&lt;!-- SEO Fallback: Crawlers follow these links; users never see them --&gt;
+&lt;noscript&gt;
+  &lt;a href="/data?page=1"&gt;Page 1&lt;/a&gt;
+  &lt;a href="/data?page=2"&gt;Page 2&lt;/a&gt;
+  &lt;a href="/data?page=3"&gt;Page 3&lt;/a&gt;
+&lt;/noscript&gt;</code></pre>
+  <p class="lede">
+    Consumers are responsible for syncing their own URL parameters (e.g. <code>?page=2</code>) to
+    the grid's initial scroll position - for example, by reading the page number on load and
+    calling <code>grid.scrollToIndex()</code> (or <code>scrollToCell()</code>) with the
+    corresponding row/column index once <code>data</code> has been set.
+  </p>
+
   <h2>Styling</h2>
   <p class="lede">
     The component renders into a closed-off shadow tree, so page-level CSS can't reach inside by
