@@ -248,6 +248,10 @@ The component renders into a closed-off shadow tree, so page-level CSS can't rea
   runway-grid { --runway-grid-scrollbar-size: 6px; }
   ```
 
+## Author
+
+[Maximilian Both](mailto:maximilian.both27@outlook.com)
+
 ## License
 
 [Apache-2.0](./LICENSE)

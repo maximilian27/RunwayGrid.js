@@ -1,8 +1,12 @@
 {
   "name": "runway-grid",
-  "version": "0.1.0",
+  "version": "1.0.0-rc0",
   "description": "High-performance virtual scroll custom element (list & 2D grid) backed by a Rust/WASM layout engine",
   "license": "Apache-2.0",
+  "author": {
+    "name": "Maximilian Both",
+    "email": "maximilian.both27@outlook.com"
+  },
   "type": "module",
   "main": "./dist/runway-grid.js",
   "module": "./dist/runway-grid.js",
