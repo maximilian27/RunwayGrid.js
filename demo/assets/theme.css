@@ -3,7 +3,9 @@
  *
  * Color theme is system-based: it follows the OS/browser `prefers-color-scheme` by default,
  * with an optional manual override (persisted in localStorage, toggled via shared.js) applied
- * through `[data-theme="light"]` / `[data-theme="dark"]` on <html>.
+ * through `[data-theme="light"]` / `[data-theme="dark"]` on <html>. That attribute is set by a
+ * blocking inline script in the <head> of every page (before the stylesheet is even requested),
+ * so the override is in place before the first paint - avoiding the flash of the wrong theme.
  */
 
 :root {
@@ -51,7 +53,8 @@
   }
 }
 
-/* Manual override, applied by shared.js on top of the system preference above. */
+/* Manual override, applied by shared.js (and, on first paint, the inline head script) on top
+   of the system preference above. */
 :root[data-theme="light"] {
   --color-bg: #ffffff;
   --color-bg-alt: #f6f8fa;

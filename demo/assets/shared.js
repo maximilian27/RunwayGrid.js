@@ -51,7 +51,9 @@ function themeLabel(theme) {
 /**
  * Wires up the `.theme-toggle` button (if present on the page) to cycle between following the
  * system color scheme and forcing light/dark, persisting the choice in localStorage so it's
- * consistent across every page of the site.
+ * consistent across every page of the site. The `data-theme` attribute itself is already applied
+ * synchronously by the blocking inline script in the <head> (before this module even loads), so
+ * the `applyTheme(currentTheme())` call here is just a no-op safety net, not what avoids flicker.
  */
 export function initThemeToggle() {
   applyTheme(currentTheme());

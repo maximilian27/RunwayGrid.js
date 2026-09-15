@@ -3,10 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>runway-grid - Demos &amp; API reference</title>
+  <meta name="color-scheme" content="light dark" />
   <script>
-    // Applied synchronously (before first paint) to avoid a light/dark flash on load - the
-    // full toggle logic lives in assets/shared.js, this just re-applies a stored override.
     (function () {
       const stored = localStorage.getItem('runway-grid-demo-theme');
       if (stored === 'light' || stored === 'dark') {
@@ -14,6 +12,7 @@
       }
     })();
   </script>
+  <title>runway-grid - Demos &amp; API reference</title>
   <link rel="stylesheet" href="assets/theme.css" />
 </head>
 <body>
