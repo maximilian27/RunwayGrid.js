@@ -45,6 +45,17 @@
   <h2>Installation</h2>
   <pre><code>npm install runway-grid</code></pre>
 
+  <h3>Bundle size tradeoff</h3>
+  <p class="lede">
+    The compiled <code>runway_engine_bg.wasm</code> binary is small (~22 KB), but it's embedded as
+    a base64 string rather than fetched as a separate <code>.wasm</code> file, so it inflates by
+    the usual ~33% base64 overhead to ~30 KB of JS source. This is a deliberate tradeoff:
+    zero-config installs (no separate asset to host, no bundler <code>.wasm</code> loader/<code>fetch()</code>
+    configuration to fight) at the cost of a slightly larger JS payload and an <code>atob()</code>
+    decode + <code>WebAssembly.instantiate()</code> step on first use, which for a module this size
+    takes low single-digit milliseconds on modern hardware.
+  </p>
+
   <h2>Quick start</h2>
   <pre><code>import 'runway-grid';</code></pre>
   <pre><code>&lt;runway-grid id="my-list" orientation="vertical" row-size="20" buffer-size="5"&gt;&lt;/runway-grid&gt;
@@ -79,6 +90,13 @@
     and WebAssembly - all broadly supported in modern evergreen browsers (recent
     Chrome/Edge/Firefox/Safari), but there is <strong>no IE11 support</strong> and no
     polyfills/fallbacks are bundled.
+  </p>
+
+  <p class="lede">
+    This demo site itself needs a bundler that understands Vite's <code>?raw</code> import suffix
+    (e.g. <code>import rawExampleSource from './01-vertical-list.js?raw'</code>, used to populate
+    the "Code" tab) - run it via <code>npm run dev</code>/<code>npm run build</code> rather than
+    serving <code>demo/</code> from a plain static file server, which won't resolve that import.
   </p>
 
   <h2>Examples</h2>
@@ -228,13 +246,22 @@
 
   <h2>Accessibility</h2>
   <p class="lede">
-    <code>&lt;runway-grid&gt;</code> applies ARIA grid semantics automatically, since only a small
-    pool of ~30 DOM nodes is ever recycled to render an arbitrarily large dataset:
+    <code>&lt;runway-grid&gt;</code> applies ARIA semantics automatically, since only a small pool
+    of ~30 DOM nodes is ever recycled to render an arbitrarily large dataset. The role used
+    depends on <code>orientation</code>, since this component's arrow-key/wheel handling always
+    moves the <em>scroll position</em>, not cell focus - <code>role="grid"</code>'s roving-tabindex,
+    two-axis cell-navigation contract would overpromise for a single-axis list, so it's reserved
+    for the case where a real two-axis structure exists:
   </p>
   <ul class="lede">
-    <li>The viewport gets <code>role="grid"</code>, plus <code>aria-rowcount</code>/<code>aria-colcount</code> set to the <em>true</em> <code>rowCount</code>/<code>colCount</code> (not the number of DOM nodes actually mounted), so assistive technology announces the real size of the virtualized dataset.</li>
-    <li>Each recycled cell gets <code>role="gridcell"</code> and 1-based <code>aria-rowindex</code>/<code>aria-colindex</code> attributes reflecting its true position in the full dataset, updated every time the cell is recycled to render a different row/column.</li>
+    <li><strong><code>orientation="both"</code></strong> (genuinely two-axis): the viewport gets <code>role="grid"</code> plus <code>aria-rowcount</code>/<code>aria-colcount</code> set to the <em>true</em> <code>rowCount</code>/<code>colCount</code> (not the number of DOM nodes actually mounted); each rendered row is wrapped in an element with <code>role="row"</code> and a 1-based <code>aria-rowindex</code>, matching the standard ARIA grid pattern (<code>grid</code> &rarr; <code>row</code> &rarr; <code>gridcell</code>); each cell gets <code>role="gridcell"</code> and 1-based <code>aria-rowindex</code>/<code>aria-colindex</code>.</li>
+    <li><strong><code>orientation="vertical"</code>/<code>"horizontal"</code></strong> (single-axis): the viewport gets <code>role="list"</code> instead, and each cell gets <code>role="listitem"</code> with 1-based <code>aria-posinset</code>/<code>aria-setsize</code> reflecting its true position and the true total count. The intervening row-wrapper element is marked <code>role="presentation"</code> so it stays transparent to assistive tech between the <code>list</code> and its <code>listitem</code>s.</li>
   </ul>
+  <p class="lede">
+    Either way, these attributes are kept in sync with the <em>true</em> dataset size - including
+    after <code>appendData()</code>/<code>removeDataFromHead()</code> change it - not just the size
+    of the first page loaded.
+  </p>
   <p class="lede">
     If a cell's <code>template</code> renders interactive content (e.g. an <code>&lt;input&gt;</code>
     or <code>&lt;button&gt;</code>), the component's own keyboard handling (arrow keys, Page
