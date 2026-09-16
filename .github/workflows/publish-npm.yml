@@ -47,9 +47,19 @@ jobs:
           PKG_NAME=$(node -p "require('./package.json').name")
           LOCAL_VERSION=$(node -p "require('./package.json').version")
           NPM_VERSION=$(npm view "$PKG_NAME" version 2>/dev/null || echo "0.0.0")
+          # npm refuses to publish a prerelease version (e.g. "1.0.0-rc0") without an
+          # explicit --tag, since it would otherwise be ambiguous whether it should
+          # become "latest". Derive the dist-tag from the prerelease identifier
+          # (e.g. "rc0" -> "rc"), falling back to "latest" for stable versions.
+          NPM_TAG=$(node -p "
+            const m = '$LOCAL_VERSION'.match(/-([a-zA-Z]+)/);
+            m ? m[1] : 'latest';
+          ")
           echo "Package name: $PKG_NAME"
           echo "Local version: $LOCAL_VERSION"
           echo "Published npm version: $NPM_VERSION"
+          echo "npm dist-tag: $NPM_TAG"
+          echo "tag=$NPM_TAG" >> "$GITHUB_OUTPUT"
           if [ "$LOCAL_VERSION" == "$NPM_VERSION" ]; then
             echo "Version $LOCAL_VERSION is already published. Skipping."
             echo "publish=false" >> "$GITHUB_OUTPUT"
@@ -61,4 +71,4 @@ jobs:
       # so the Vite library build doesn't need its own separate step here.
       - name: Publish to npm
         if: steps.check.outputs.publish == 'true'
-        run: npm publish --access public
+        run: npm publish --access public --tag "${{ steps.check.outputs.tag }}"
