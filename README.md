@@ -13,6 +13,17 @@ Supports:
 npm install runway-grid
 ```
 
+### Bundle size tradeoff
+
+The compiled `runway_engine_bg.wasm` binary is small (~22 KB), but it's embedded as a base64
+string (`src/runway-engine-wasm.js`) rather than fetched as a separate `.wasm` file, so it
+inflates by the usual ~33% base64 overhead to ~30 KB of JS source. This is a deliberate tradeoff:
+it means zero-config installs (no separate asset to host, no bundler `.wasm` loader/`fetch()`
+configuration to fight - which matters especially for Angular/webpack setups that otherwise need
+extra configuration to serve binary assets) at the cost of a slightly larger JS payload and a
+`atob()` decode + `WebAssembly.instantiate()` step on first use, which for a module this size
+takes low single-digit milliseconds on modern hardware - not something end users will notice.
+
 ## Usage
 
 ```js
@@ -47,6 +58,8 @@ import 'runway-grid';
 The `<runway-grid>` element must be given an explicit size (e.g. `height`/`width` via CSS) since it virtualizes its content within its own viewport.
 
 See the [`demo/`](./demo) folder for a full documentation site with complete, runnable examples of all seven usage patterns (vertical list, 2D grid, horizontal list, infinite scroll - both vertical and horizontal - with variable row/column sizes, and infinite scroll with a memory-capped sliding window - both vertical and horizontal), each on its own page under [`demo/examples/`](./demo/examples), plus an API reference and a system-based (light/dark) color theme. Every example page has "Preview" and "Code" tabs - the Code tab shows the exact markup/script for that example, syntax-highlighted in an IDE-like viewer with line numbers and a copy button. Open [`demo/index.html`](./demo/index.html) to browse it.
+
+The demo site needs a bundler that understands Vite's `?raw` import suffix (e.g. `import rawExampleSource from './01-vertical-list.js?raw'`, used to populate the "Code" tab) - run it via `npm run dev`/`npm run build` (see [`vite.config.js`](./vite.config.js)) rather than serving `demo/` from a plain static file server, which won't resolve that import.
 
 ### Browser support
 
@@ -144,15 +157,25 @@ string. When `rowItem` (or any derived value) may contain untrusted content, eit
 
 ## Accessibility
 
-`<runway-grid>` applies ARIA grid semantics automatically, since only a small pool of ~30 DOM
-nodes is ever recycled to render an arbitrarily large dataset:
+`<runway-grid>` applies ARIA semantics automatically, since only a small pool of ~30 DOM nodes is
+ever recycled to render an arbitrarily large dataset. The role used depends on `orientation`,
+since this component's arrow-key/wheel handling always moves the *scroll position*, not cell
+focus - `role="grid"`'s roving-tabindex, two-axis cell-navigation contract would overpromise for
+a single-axis list, so it's reserved for the case where a real two-axis structure exists:
 
-- The viewport gets `role="grid"`, plus `aria-rowcount`/`aria-colcount` set to the *true*
-  `rowCount`/`colCount` (not the number of DOM nodes actually mounted), so assistive technology
-  announces the real size of the virtualized dataset.
-- Each recycled cell gets `role="gridcell"` and 1-based `aria-rowindex`/`aria-colindex`
-  attributes reflecting its true position in the full dataset, updated every time the cell is
-  recycled to render a different row/column.
+- **`orientation="both"`** (genuinely two-axis): the viewport gets `role="grid"` plus
+  `aria-rowcount`/`aria-colcount` set to the *true* `rowCount`/`colCount` (not the number of DOM
+  nodes actually mounted); each rendered row is wrapped in an element with `role="row"` and a
+  1-based `aria-rowindex`, matching the standard ARIA grid pattern (`grid` -> `row` -> `gridcell`);
+  each cell gets `role="gridcell"` and 1-based `aria-rowindex`/`aria-colindex`.
+- **`orientation="vertical"`/`"horizontal"`** (single-axis): the viewport gets `role="list"`
+  instead, and each cell gets `role="listitem"` with 1-based `aria-posinset`/`aria-setsize`
+  reflecting its true position and the true total count. The intervening row-wrapper element is
+  marked `role="presentation"` so it stays transparent to assistive tech between the `list` and
+  its `listitem`s.
+
+Either way, these attributes are kept in sync with the *true* dataset size - including after
+`appendData()`/`removeDataFromHead()` change it - not just the size of the first page loaded.
 
 If a cell's `template` renders interactive content (e.g. an `<input>` or `<button>`), the
 component's own keyboard handling (arrow keys, Page Up/Down, Home/End) only intercepts key
@@ -224,6 +247,10 @@ The component renders into a closed-off shadow tree, so page-level CSS can't rea
   ```css
   runway-grid { --runway-grid-scrollbar-size: 6px; }
   ```
+
+## Author
+
+[Maximilian Both](mailto:maximilian.both27@outlook.com)
 
 ## License
 

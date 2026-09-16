@@ -66,6 +66,7 @@ COMPONENT_TEMPLATE.innerHTML = `
       .runway-grid__row { display: flex; flex: 1; min-height: 0; min-width: 0; position: relative; }
       .runway-grid__viewport { flex: 1; min-width: 0; overflow: hidden; position: relative; outline: none; }
       .runway-grid__wrapper { position: absolute; top: 0; left: 0; will-change: transform; }
+      .runway-grid__rowgroup { position: absolute; top: 0; left: 0; }
       .runway-grid__cell { position: absolute; top: 0; left: 0; }
       .runway-grid__track--vertical { 
         flex-shrink: 0; 
@@ -141,7 +142,13 @@ export class RunwayGrid extends HTMLElement {
     this.columnsData = null;
     this._colCount = 1;
     this.renderedNodes = []; // 2D matrix
+    this.renderedRowGroups = []; // one wrapper element per rendered row, grouping its cells for ARIA/positioning
     this.registry = null;
+
+    // The wrapper is a purely structural positioning container between the viewport
+    // (role="grid"/"list") and the row groups/cells (role="row"/"gridcell" or "listitem") -
+    // marking it `presentation` keeps it transparent to the accessibility tree.
+    this.wrapper.setAttribute('role', 'presentation');
 
     this.wasmInitialized = false;
     this.wasmInitError = null;
@@ -154,6 +161,13 @@ export class RunwayGrid extends HTMLElement {
 
     this._virtualScrollTop = 0;
     this._virtualScrollLeft = 0;
+
+    // `rangechange` batching: while `_batchDepth > 0`, `calculateIndices()` stores its
+    // freshly computed event on `_pendingRangeChangeEvent` instead of dispatching it
+    // immediately, so a public method that internally calls `calculateIndices()` several
+    // times in a row (e.g. `scrollToCell()`) only ever dispatches the final, settled one.
+    this._batchDepth = 0;
+    this._pendingRangeChangeEvent = null;
 
     this._bindEvents();
     this.initWasm();
@@ -248,11 +262,75 @@ export class RunwayGrid extends HTMLElement {
     if (this.horizontalEnabled && this.colCount === 0) return;
 
     this.registry = new VirtualScrollRegistry(this.rowCount || 1, this.colCount || 1, this.rowSize, this.colSize);
-    this.viewport.setAttribute('role', 'grid');
-    this.viewport.setAttribute('aria-rowcount', String(this.rowCount));
-    this.viewport.setAttribute('aria-colcount', String(this.colCount));
+    this._applyContainerAria();
     this.updateSpacer();
     this.calculateIndices();
+  }
+
+  /**
+   * Applies (or refreshes) the ARIA container role/counts on the viewport, based on
+   * {@link RunwayGrid#orientation}: single-axis orientations (`"vertical"`/`"horizontal"`) get
+   * `role="list"`, since this component's keyboard/wheel handling moves the *scroll position*,
+   * not cell focus - the roving-tabindex cell-navigation contract implied by `role="grid"` would
+   * overpromise there. Only the genuinely two-axis `orientation="both"` gets `role="grid"` plus
+   * `aria-rowcount`/`aria-colcount` set to the *true* {@link RunwayGrid#rowCount}/{@link RunwayGrid#colCount}
+   * (not the number of DOM nodes actually mounted). Called whenever the registry is (re)built and
+   * whenever the true row/column count changes ({@link RunwayGrid#appendData}/{@link RunwayGrid#removeDataFromHead}),
+   * so these never go stale.
+   * @private
+   */
+  _applyContainerAria() {
+    if (this.orientation === 'both') {
+      this.viewport.setAttribute('role', 'grid');
+      this.viewport.setAttribute('aria-rowcount', String(this.rowCount));
+      this.viewport.setAttribute('aria-colcount', String(this.colCount));
+    } else {
+      this.viewport.setAttribute('role', 'list');
+      this.viewport.removeAttribute('aria-rowcount');
+      this.viewport.removeAttribute('aria-colcount');
+    }
+  }
+
+  /**
+   * Refreshes ARIA attributes that depend on the total row/column count after
+   * {@link RunwayGrid#appendData}/{@link RunwayGrid#removeDataFromHead} change that count: the
+   * viewport's `aria-rowcount`/`aria-colcount` (for `orientation="both"`), or every
+   * currently-rendered cell's `aria-setsize` (for single-axis orientations) - since a cell whose
+   * row/column index didn't change is never re-bound by {@link RunwayGrid#applyChanges} and would
+   * otherwise keep reporting the size of the first page loaded.
+   * @private
+   */
+  _refreshAriaCounts() {
+    this._applyContainerAria();
+    if (this.orientation === 'both') return;
+    const setSize = String(this.orientation === 'horizontal' ? this.colCount : this.rowCount);
+    for (const rowNodes of this.renderedNodes) {
+      for (const node of rowNodes) node.setAttribute('aria-setsize', setSize);
+    }
+  }
+
+  /**
+   * Begins a `rangechange` dispatch batch: while any batch is active, {@link RunwayGrid#calculateIndices}
+   * defers dispatching its event, so nested/repeated calls made by a single public method invocation
+   * only ever result in one dispatch (of the last, settled range) once the outermost batch ends.
+   * @private
+   */
+  _beginRangeChangeBatch() {
+    this._batchDepth++;
+  }
+
+  /**
+   * Ends a `rangechange` dispatch batch started by {@link RunwayGrid#_beginRangeChangeBatch},
+   * dispatching the last pending event once the outermost batch has closed.
+   * @private
+   */
+  _endRangeChangeBatch() {
+    this._batchDepth = Math.max(0, this._batchDepth - 1);
+    if (this._batchDepth === 0 && this._pendingRangeChangeEvent) {
+      const evt = this._pendingRangeChangeEvent;
+      this._pendingRangeChangeEvent = null;
+      this.dispatchEvent(evt);
+    }
   }
 
   // --- EVENT HANDLERS ---
@@ -277,42 +355,65 @@ export class RunwayGrid extends HTMLElement {
     if (axis === 'vertical') this._virtualScrollTop = virtualPos;
     else this._virtualScrollLeft = virtualPos;
 
-    this.calculateIndices();
-    this._settleAtEnd(this.viewport.clientHeight, this.viewport.clientWidth);
+    this._beginRangeChangeBatch();
+    try {
+      this.calculateIndices();
+      this._settleAtEnd(this.viewport.clientHeight, this.viewport.clientWidth);
+    } finally {
+      this._endRangeChangeBatch();
+    }
   }
 
   /**
    * Handles `wheel` events on the viewport, moving the virtual scroll position
    * on whichever axes are enabled and re-rendering/re-syncing the tracks.
    *
+   * Only calls `e.preventDefault()` on axes that actually have room left to move in the
+   * wheel gesture's direction - once the grid is already at its scroll bound on every
+   * enabled axis, the event is left alone so it can bubble up to (and scroll-chain into) a
+   * parent scrollable container, instead of just dead-ending the page/container scroll.
+   *
    * @param {WheelEvent} e The wheel event.
    */
   _onWheel(e) {
-    e.preventDefault();
     if (!this.registry) return;
 
     let moved = false;
+    let hasRoom = false;
 
-    if (this.verticalEnabled) {
+    if (this.verticalEnabled && e.deltaY !== 0) {
       const maxScroll = this.registry.get_total_height() - this.viewport.clientHeight;
       if (maxScroll > 0) {
-        this._virtualScrollTop = this._clamp(this._virtualScrollTop + (e.deltaY * 0.3), 0, maxScroll);
-        moved = true;
+        const before = this._virtualScrollTop;
+        if ((e.deltaY < 0 && before > 0) || (e.deltaY > 0 && before < maxScroll)) hasRoom = true;
+        const after = this._clamp(before + (e.deltaY * 0.3), 0, maxScroll);
+        if (after !== before) { this._virtualScrollTop = after; moved = true; }
       }
     }
 
-    if (this.horizontalEnabled) {
+    if (this.horizontalEnabled && e.deltaX !== 0) {
       const maxScroll = this.registry.get_total_width() - this.viewport.clientWidth;
       if (maxScroll > 0) {
-        this._virtualScrollLeft = this._clamp(this._virtualScrollLeft + (e.deltaX * 0.3), 0, maxScroll);
-        moved = true;
+        const before = this._virtualScrollLeft;
+        if ((e.deltaX < 0 && before > 0) || (e.deltaX > 0 && before < maxScroll)) hasRoom = true;
+        const after = this._clamp(before + (e.deltaX * 0.3), 0, maxScroll);
+        if (after !== before) { this._virtualScrollLeft = after; moved = true; }
       }
     }
 
+    // Claim the wheel gesture only when it actually moves the grid on some axis - otherwise
+    // let it propagate so an enclosing scroll container (e.g. the page itself) keeps scrolling.
+    if (hasRoom) e.preventDefault();
+
     if (moved) {
-      this.calculateIndices();
-      this._settleAtEnd(this.viewport.clientHeight, this.viewport.clientWidth);
-      this.syncTrackFromVirtual();
+      this._beginRangeChangeBatch();
+      try {
+        this.calculateIndices();
+        this._settleAtEnd(this.viewport.clientHeight, this.viewport.clientWidth);
+        this.syncTrackFromVirtual();
+      } finally {
+        this._endRangeChangeBatch();
+      }
     }
   }
 
@@ -347,9 +448,14 @@ export class RunwayGrid extends HTMLElement {
     if (changed) {
       if (this.verticalEnabled) this._virtualScrollTop = this._clamp(this._virtualScrollTop, 0, maxV);
       if (this.horizontalEnabled) this._virtualScrollLeft = this._clamp(this._virtualScrollLeft, 0, maxH);
-      this.calculateIndices();
-      this._settleAtEnd(this.viewport.clientHeight, this.viewport.clientWidth);
-      this.syncTrackFromVirtual();
+      this._beginRangeChangeBatch();
+      try {
+        this.calculateIndices();
+        this._settleAtEnd(this.viewport.clientHeight, this.viewport.clientWidth);
+        this.syncTrackFromVirtual();
+      } finally {
+        this._endRangeChangeBatch();
+      }
     }
   }
 
@@ -580,7 +686,13 @@ export class RunwayGrid extends HTMLElement {
     // Strict range excluding the buffer - only the indices actually intersecting the
     // visible pixels on screen. Ideal for visibility tracking (e.g. impression logging).
     rangeChangeEvent.viewport = { startRow: viewport_start_row, endRow: viewport_end_row, startCol: viewport_start_col, endCol: viewport_end_col };
-    this.dispatchEvent(rangeChangeEvent);
+    // While a `rangechange` batch is active (see `_beginRangeChangeBatch`), defer dispatching:
+    // only the last event computed before the batch closes actually gets dispatched, so a
+    // public method that calls `calculateIndices()` several times per invocation (e.g.
+    // `scrollToCell()`, or a handler that re-settles via `_settleAtEnd()`) never fires more
+    // than one `rangechange` per call.
+    if (this._batchDepth > 0) this._pendingRangeChangeEvent = rangeChangeEvent;
+    else this.dispatchEvent(rangeChangeEvent);
     this.applyChanges(start_row, end_row, start_col, end_col, translate_y, roundedTranslateY, translate_x, roundedTranslateX);
   }
 
@@ -603,25 +715,43 @@ export class RunwayGrid extends HTMLElement {
   applyChanges(startRow, endRow, startCol, endCol, translateYRaw, translateYRounded, translateXRaw, translateXRounded) {
     const requiredRows = Math.max(0, endRow - startRow);
     const requiredCols = Math.max(0, endCol - startCol);
+    // Only the genuinely two-axis `orientation="both"` uses the ARIA grid pattern
+    // (`grid` -> `row` -> `gridcell`); single-axis orientations use `list` -> `listitem`,
+    // since this component's arrow-key handling moves the *scroll position*, not cell focus.
+    const isGrid = this.orientation === 'both';
     this._isUpdatingDOM = true;
 
     try {
       while (this.renderedNodes.length > requiredRows) {
         const rowNodes = this.renderedNodes.pop();
-        for (const el of rowNodes) { this.resizeObserver.unobserve(el); this.wrapper.removeChild(el); }
+        for (const el of rowNodes) this.resizeObserver.unobserve(el);
+        this.wrapper.removeChild(this.renderedRowGroups.pop());
       }
-      while (this.renderedNodes.length < requiredRows) this.renderedNodes.push([]);
+      while (this.renderedNodes.length < requiredRows) {
+        // Every row's cells are grouped under their own wrapper element so the DOM mirrors
+        // the standard ARIA grid pattern (`grid` -> `row` -> `gridcell`) instead of putting
+        // `gridcell`s directly under `grid` with no owning `row` in between. For single-axis
+        // orientations this wrapper carries no semantic role of its own (`presentation`), so
+        // it stays transparent to assistive tech between the `list` and its `listitem`s.
+        const rowGroup = document.createElement('div');
+        rowGroup.classList.add('runway-grid__rowgroup');
+        rowGroup.setAttribute('role', isGrid ? 'row' : 'presentation');
+        this.wrapper.appendChild(rowGroup);
+        this.renderedRowGroups.push(rowGroup);
+        this.renderedNodes.push([]);
+      }
 
       for (let r = 0; r < requiredRows; r++) {
         const rowNodes = this.renderedNodes[r];
+        const rowGroup = this.renderedRowGroups[r];
         while (rowNodes.length > requiredCols) {
-          const el = rowNodes.pop(); this.resizeObserver.unobserve(el); this.wrapper.removeChild(el);
+          const el = rowNodes.pop(); this.resizeObserver.unobserve(el); rowGroup.removeChild(el);
         }
         while (rowNodes.length < requiredCols) {
           const el = document.createElement('div');
           el.classList.add('runway-grid__cell');
           el.setAttribute('part', 'cell');
-          this.wrapper.appendChild(el);
+          rowGroup.appendChild(el);
           rowNodes.push(el);
         }
       }
@@ -642,12 +772,16 @@ export class RunwayGrid extends HTMLElement {
       for (let r = 0; r < requiredRows; r++) {
         const rowIndex = startRow + r;
         const rowTop = Math.round(this.registry.get_row_offset(rowIndex) - clampedScrollTop) - translateYRounded;
+        const rowGroup = this.renderedRowGroups[r];
+        rowGroup.style.top = `${rowTop}px`;
+        if (isGrid) rowGroup.setAttribute('aria-rowindex', String(rowIndex + 1));
 
         for (let c = 0; c < requiredCols; c++) {
           const colIndex = startCol + c;
           const node = this.renderedNodes[r][c];
 
-          node.style.top = `${rowTop}px`;
+          // The cell's own `top` stays at the `.runway-grid__cell` default (`0`) - it's
+          // positioned relative to its row group, which now carries the vertical offset.
           node.style.left = `${Math.round(this.registry.get_col_offset(colIndex) - clampedScrollLeft) - translateXRounded}px`;
           node.style.width = this.horizontalEnabled ? '' : `${fullRowWidth}px`;
 
@@ -660,9 +794,17 @@ export class RunwayGrid extends HTMLElement {
 
           node.setAttribute('data-row', rowIndex);
           node.setAttribute('data-col', colIndex);
-          node.setAttribute('role', 'gridcell');
-          node.setAttribute('aria-rowindex', String(rowIndex + 1));
-          node.setAttribute('aria-colindex', String(colIndex + 1));
+          if (isGrid) {
+            node.setAttribute('role', 'gridcell');
+            node.setAttribute('aria-rowindex', String(rowIndex + 1));
+            node.setAttribute('aria-colindex', String(colIndex + 1));
+          } else {
+            const posIndex = this.orientation === 'horizontal' ? colIndex : rowIndex;
+            const setSize = this.orientation === 'horizontal' ? this.colCount : this.rowCount;
+            node.setAttribute('role', 'listitem');
+            node.setAttribute('aria-posinset', String(posIndex + 1));
+            node.setAttribute('aria-setsize', String(setSize));
+          }
           node.innerHTML = '';
 
           const newContent = this.renderItem(this.rows[rowIndex], rowIndex, colIndex, this.rowCount, this.colCount);
@@ -770,21 +912,29 @@ export class RunwayGrid extends HTMLElement {
       if (this.horizontalEnabled) this._virtualScrollLeft = this._clamp(this.registry.get_col_offset(colIndex), 0, this.registry.get_total_width() - vw);
     };
 
-    position();
-    this.calculateIndices();
-
-    const { rowMax, colMax } = this._measureRenderedSizes();
-    if (this._applyMeasuredSizes(rowMax, colMax)) {
+    // `calculateIndices()` below runs up to 4 times as the target position/measured sizes are
+    // refined - batch them so consumers wiring infinite-scroll fetches off `rangechange` only
+    // ever see the one final, settled event per `scrollToCell()` call, not up to 4 redundant ones.
+    this._beginRangeChangeBatch();
+    try {
       position();
       this.calculateIndices();
+
+      const { rowMax, colMax } = this._measureRenderedSizes();
+      if (this._applyMeasuredSizes(rowMax, colMax)) {
+        position();
+        this.calculateIndices();
+      }
+
+      this._settleAtEnd(vh, vw);
+      position(); // Snap exactly to boundaries if we just measured the tail
+
+      this.calculateIndices();
+      this.updateSpacer();
+      this.syncTrackFromVirtual();
+    } finally {
+      this._endRangeChangeBatch();
     }
-
-    this._settleAtEnd(vh, vw);
-    position(); // Snap exactly to boundaries if we just measured the tail
-
-    this.calculateIndices();
-    this.updateSpacer();
-    this.syncTrackFromVirtual();
   }
 
   /**
@@ -869,6 +1019,7 @@ export class RunwayGrid extends HTMLElement {
 
     this.updateSpacer();
     this.calculateIndices();
+    this._refreshAriaCounts();
   }
 
   /**
@@ -913,6 +1064,7 @@ export class RunwayGrid extends HTMLElement {
     this.updateSpacer();
     this.syncTrackFromVirtual();
     this.calculateIndices();
+    this._refreshAriaCounts();
   }
 
   /**
