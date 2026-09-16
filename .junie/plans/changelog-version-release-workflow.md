@@ -17,7 +17,8 @@ Prepare `runway-grid` for its first release-candidate cut by adding release-mana
 **Out of scope:**
 - Publishing to the npm registry (`npm publish`) - not requested, and would need an `NPM_TOKEN` secret.
 - Any CI workflow for pull requests (running tests/typecheck/build on PRs) - not requested; this task is specifically about the merge-to-`master` release pipeline.
-- Rebuilding the Rust/WASM engine (`runway_engine`) in CI - `src/runway-engine-wasm.js` (the base64-embedded compiled output) is already committed, and `npm run build:lib` only needs Node, so no Rust toolchain/`wasm-pack` setup is needed in the workflow.
+
+**Update (follow-up):** Rebuilding the Rust/WASM engine in CI is now **in scope** - the workflow runs `npm run build:engine` (which wraps `build:wasm`/`wasm-pack build` and `build:wasm-base64`) before `build:lib`, so every release always packages a freshly compiled `runway_engine` instead of relying on the previously committed `src/runway-engine-wasm.js`. This requires installing the Rust toolchain (`wasm32-unknown-unknown` target) and `wasm-pack` in the job.
 
 ### User Stories
 - As a maintainer, I want a `CHANGELOG.md` so contributors and users can see what changed release-to-release without digging through commit history.
@@ -46,6 +47,7 @@ Prepare `runway-grid` for its first release-candidate cut by adding release-mana
 2. **Fail on an unchanged version.** If `package.json`'s version has already been tagged, the workflow step that checks `git rev-parse -q --verify refs/tags/v<version>` exits non-zero and fails the run (via `exit 1`), rather than skipping quietly. This enforces "every merge to `master` must include a version bump" as a hard rule, surfaced immediately in the Actions UI.
 3. **Release assets: `npm pack` tarball + docs.** The release attaches exactly what would be published to npm (`npm pack` respects `package.json`'s `"files"` array: `dist/`, `README.md`, `LICENSE`), plus `CHANGELOG.md` separately (since it's documentation, not library code, and won't be added to `"files"`).
 4. **Version source of truth is `package.json`.** `runway_engine/Cargo.toml` is kept in sync manually as part of this change (and future manual bumps), but the workflow only reads `package.json`'s version for tagging/release naming, since that's what actually gets published/packed.
+5. **Rebuild the Rust/WASM engine in CI (follow-up decision).** Rather than trusting the committed `src/runway-engine-wasm.js`, the workflow now installs the Rust toolchain (`dtolnay/rust-toolchain@stable` with the `wasm32-unknown-unknown` target) and `wasm-pack` (`jetli/wasm-pack-action@v0.4.0`), plus `Swatinem/rust-cache@v2` for build caching, then runs `npm run build:engine` before `npm run build:lib`. This guarantees every release ships the latest compiled Rust code, not a stale, manually-regenerated base64 blob.
 
 ### Proposed Changes
 
@@ -199,4 +201,10 @@ A new `.github/workflows/release.yml` workflow automatically tags and releases e
 - Create `.github/workflows/release.yml` triggered on `push` to the `master` branch, with `permissions: contents: write`.
 - Add a step that reads the version from `package.json` and fails the run if a `v<version>` tag already exists (enforcing a version bump on every merge to `master`).
 - Add steps that create and push the `v<version>` git tag, then run `npm ci` and `npm run build:lib` to produce `dist/`.
-- Add a step that runs `npm pack` to produce the publishable tarball (per `package.json`'s `"files"` list), then create a GitHub Release for the new tag attaching the tarball, `CHANGELOG.md`, and `LICENSE`.`.
+- Add a step that runs `npm pack` to produce the publishable tarball (per `package.json`'s `"files"` list), then create a GitHub Release for the new tag attaching the tarball, `CHANGELOG.md`, and `LICENSE`.
+
+### ✓ Step 5: Rebuild the Rust/WASM engine in the release workflow
+The release workflow always compiles the latest `runway_engine` Rust source instead of relying on the previously committed base64 WASM module.
+- Add `dtolnay/rust-toolchain@stable` (with the `wasm32-unknown-unknown` target) and `Swatinem/rust-cache@v2` steps to `.github/workflows/release.yml`, before the Node build steps.
+- Add `jetli/wasm-pack-action@v0.4.0` to install `wasm-pack` on the runner.
+- Add a `npm run build:engine` step (runs `build:wasm` + `build:wasm-base64`) right after `npm ci` and before `npm run build:lib`, so `dist/` is built from a freshly regenerated `src/runway-engine-wasm.js`.
