@@ -15,10 +15,13 @@ Prepare `runway-grid` for its first release-candidate cut by adding release-mana
 - A single GitHub Actions workflow (`.github/workflows/release.yml`) that, on every push to `master`: reads the version from `package.json`, fails fast if a tag for that version already exists (i.e. every merge to `master` must carry a version bump), otherwise creates+pushes a `v<version>` tag, builds the library, packages it with `npm pack` plus `CHANGELOG.md`/`LICENSE`, and publishes a GitHub Release with those files attached.
 
 **Out of scope:**
-- Publishing to the npm registry (`npm publish`) - not requested, and would need an `NPM_TOKEN` secret.
 - Any CI workflow for pull requests (running tests/typecheck/build on PRs) - not requested; this task is specifically about the merge-to-`master` release pipeline.
 
 **Update (follow-up):** Rebuilding the Rust/WASM engine in CI is now **in scope** - the workflow runs `npm run build:engine` (which wraps `build:wasm`/`wasm-pack build` and `build:wasm-base64`) before `build:lib`, so every release always packages a freshly compiled `runway_engine` instead of relying on the previously committed `src/runway-engine-wasm.js`. This requires installing the Rust toolchain (`wasm32-unknown-unknown` target) and `wasm-pack` in the job.
+
+**Update (follow-up 2):** Publishing to the npm registry is now **in scope**, under the package name `runway-grid-js` (renamed from `runway-grid` in `package.json`). A new, separate workflow (`.github/workflows/publish-npm.yml`), also triggered on `push: branches: [master]`, rebuilds the Rust/WASM engine and the library, checks the currently-published npm version against `package.json`'s version, and - if different - publishes via npm's OIDC Trusted Publisher flow (no `NPM_TOKEN` secret needed).
+
+**Update (follow-up 3):** The npm package name is reverted back to `runway-grid` (from `runway-grid-js`), since npmjs.com's registry hosts JavaScript packages generically and the `-js` suffix was unnecessary. `package.json`, `package-lock.json`, `README.md`'s install instructions, and `release.yml`'s expected tarball filename are all updated accordingly; `publish-npm.yml` needs no change since it reads the package name dynamically from `package.json`.
 
 ### User Stories
 - As a maintainer, I want a `CHANGELOG.md` so contributors and users can see what changed release-to-release without digging through commit history.
@@ -48,6 +51,8 @@ Prepare `runway-grid` for its first release-candidate cut by adding release-mana
 3. **Release assets: `npm pack` tarball + docs.** The release attaches exactly what would be published to npm (`npm pack` respects `package.json`'s `"files"` array: `dist/`, `README.md`, `LICENSE`), plus `CHANGELOG.md` separately (since it's documentation, not library code, and won't be added to `"files"`).
 4. **Version source of truth is `package.json`.** `runway_engine/Cargo.toml` is kept in sync manually as part of this change (and future manual bumps), but the workflow only reads `package.json`'s version for tagging/release naming, since that's what actually gets published/packed.
 5. **Rebuild the Rust/WASM engine in CI (follow-up decision).** Rather than trusting the committed `src/runway-engine-wasm.js`, the workflow now installs the Rust toolchain (`dtolnay/rust-toolchain@stable` with the `wasm32-unknown-unknown` target) and `wasm-pack` (`jetli/wasm-pack-action@v0.4.0`), plus `Swatinem/rust-cache@v2` for build caching, then runs `npm run build:engine` before `npm run build:lib`. This guarantees every release ships the latest compiled Rust code, not a stale, manually-regenerated base64 blob.
+6. **npm publish is a separate workflow, not folded into `release.yml` (follow-up decision).** The user chose a dedicated `publish-npm.yml` over extending `release.yml`, mirroring the structure of the sample workflow they provided, even though it duplicates the checkout/Rust/WASM build. Authentication uses npm's OIDC Trusted Publisher feature (`id-token: write` permission, no stored secret) rather than an `NPM_TOKEN`, which requires a one-time manual setup on npmjs.com registering this repo + `publish-npm.yml` as a trusted publisher for the `runway-grid-js` package before the first run. As a defensive safety net on top of `release.yml`'s tag-exists check, the publish job independently compares `npm view runway-grid-js version` against `package.json`'s version and skips publishing (rather than erroring) if they already match.
+7. **Package name reverted to `runway-grid` (follow-up decision).** The `-js` suffix was dropped since npmjs.com only hosts JavaScript packages, making the suffix redundant; the published package name is now `runway-grid` again, matching the custom element and library name.
 
 ### Proposed Changes
 
@@ -208,3 +213,18 @@ The release workflow always compiles the latest `runway_engine` Rust source inst
 - Add `dtolnay/rust-toolchain@stable` (with the `wasm32-unknown-unknown` target) and `Swatinem/rust-cache@v2` steps to `.github/workflows/release.yml`, before the Node build steps.
 - Add `jetli/wasm-pack-action@v0.4.0` to install `wasm-pack` on the runner.
 - Add a `npm run build:engine` step (runs `build:wasm` + `build:wasm-base64`) right after `npm ci` and before `npm run build:lib`, so `dist/` is built from a freshly regenerated `src/runway-engine-wasm.js`.
+
+### ✓ Step 6: Create the npm publish workflow
+A new `.github/workflows/publish-npm.yml` workflow publishes `runway-grid-js` to the npm registry on every push to `master` where the version has changed, using OIDC Trusted Publishing.
+- Rename `package.json`'s `"name"` from `runway-grid` to `runway-grid-js`.
+- Create `.github/workflows/publish-npm.yml` triggered on `push` to `master`, with `permissions: { contents: read, id-token: write }`.
+- Add steps to check out the repo, install the Rust toolchain (`wasm32-unknown-unknown` target) + `wasm-pack` + `Swatinem/rust-cache@v2`, set up Node with `registry-url: https://registry.npmjs.org`, run `npm ci` and `npm run build:engine`, then upgrade npm (`npm install -g npm@latest`) since trusted publishing needs npm CLI >= 11.5.1.
+- Add a step comparing `npm view runway-grid-js version` (falling back to `0.0.0` if unpublished) against `package.json`'s version, skipping the publish step (not failing the run) when they already match.
+- Add the `npm publish --access public` step (relying on OIDC for auth and automatic provenance, no `NPM_TOKEN`/`--provenance` flag needed), gated on the version check.
+
+### ✓ Step 7: Rename the npm package back to runway-grid
+The published npm package name reverts to `runway-grid` (dropping the `-js` suffix), since npmjs.com only hosts JavaScript packages so the suffix was redundant.
+- Rename `package.json`'s `"name"` back to `runway-grid`, and keep `package-lock.json`'s top-level and root (`""`) package `"name"` entries in sync.
+- Update `README.md`'s `npm install` instruction to `npm install runway-grid`.
+- Update `.github/workflows/release.yml`'s expected tarball filename references (`runway-grid-<version>.tgz`) to match.
+- Leave `.github/workflows/publish-npm.yml` untouched, since it reads the package name dynamically from `package.json` via `node -p "require('./package.json').name"`.
