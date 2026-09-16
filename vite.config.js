@@ -8,6 +8,9 @@ import { fileURLToPath } from 'node:url';
 const page = (relativePath) => fileURLToPath(new URL(`demo/${relativePath}`, import.meta.url));
 
 export default defineConfig({
+  // GitHub Pages serves this repo from a subpath (https://<user>.github.io/RunwayGrid.js/),
+  // so asset URLs must be rooted there instead of at the domain root.
+  base: '/RunwayGrid.js/',
   root: 'demo',
   build: {
     outDir: '../dist-demo',

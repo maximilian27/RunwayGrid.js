@@ -23,6 +23,10 @@ Prepare `runway-grid` for its first release-candidate cut by adding release-mana
 
 **Update (follow-up 3):** The npm package name is reverted back to `runway-grid` (from `runway-grid-js`), since npmjs.com's registry hosts JavaScript packages generically and the `-js` suffix was unnecessary. `package.json`, `package-lock.json`, `README.md`'s install instructions, and `release.yml`'s expected tarball filename are all updated accordingly; `publish-npm.yml` needs no change since it reads the package name dynamically from `package.json`.
 
+**Update (follow-up 4):** A live CI run of `publish-npm.yml` failed with `npm error code E404 ... PUT https://registry.npmjs.org/runway-grid - Not found`. This is npm's well-known OIDC Trusted Publishing bootstrap limitation: a package must already exist on the registry (and have a Trusted Publisher configured in its settings) before OIDC-based publishes from CI can succeed - there's no way to configure a Trusted Publisher for a package that has never been published. The user chose to resolve this with a **manual first publish** (no workflow/token changes): publish `runway-grid@1.0.0-rc0` once from a local machine via `npm login` + `npm publish --access public --tag rc`, then configure the Trusted Publisher on npmjs.com pointing at `publish-npm.yml`; all subsequent pushes to `master` will then publish via OIDC as originally designed.
+
+**Update (follow-up 5):** Deploying the `demo/` site to GitHub Pages is now **in scope**. A new `.github/workflows/deploy-pages.yml` workflow, triggered on `push: branches: [master]`, runs `npm run build` (producing `dist-demo/`) and publishes it via the official `actions/configure-pages` + `actions/upload-pages-artifact` + `actions/deploy-pages` actions. Since GitHub Pages serves a repo site from `https://<user>.github.io/<repo-name>/` rather than the domain root, `vite.config.js` now sets `base: '/RunwayGrid.js/'` so the built demo's asset URLs resolve correctly once hosted there.
+
 ### User Stories
 - As a maintainer, I want a `CHANGELOG.md` so contributors and users can see what changed release-to-release without digging through commit history.
 - As a maintainer, I want every manifest to agree on the same version number so there's no ambiguity about what "1.0.0-rc0" actually refers to.
@@ -53,6 +57,7 @@ Prepare `runway-grid` for its first release-candidate cut by adding release-mana
 5. **Rebuild the Rust/WASM engine in CI (follow-up decision).** Rather than trusting the committed `src/runway-engine-wasm.js`, the workflow now installs the Rust toolchain (`dtolnay/rust-toolchain@stable` with the `wasm32-unknown-unknown` target) and `wasm-pack` (`jetli/wasm-pack-action@v0.4.0`), plus `Swatinem/rust-cache@v2` for build caching, then runs `npm run build:engine` before `npm run build:lib`. This guarantees every release ships the latest compiled Rust code, not a stale, manually-regenerated base64 blob.
 6. **npm publish is a separate workflow, not folded into `release.yml` (follow-up decision).** The user chose a dedicated `publish-npm.yml` over extending `release.yml`, mirroring the structure of the sample workflow they provided, even though it duplicates the checkout/Rust/WASM build. Authentication uses npm's OIDC Trusted Publisher feature (`id-token: write` permission, no stored secret) rather than an `NPM_TOKEN`, which requires a one-time manual setup on npmjs.com registering this repo + `publish-npm.yml` as a trusted publisher for the `runway-grid-js` package before the first run. As a defensive safety net on top of `release.yml`'s tag-exists check, the publish job independently compares `npm view runway-grid-js version` against `package.json`'s version and skips publishing (rather than erroring) if they already match.
 7. **Package name reverted to `runway-grid` (follow-up decision).** The `-js` suffix was dropped since npmjs.com only hosts JavaScript packages, making the suffix redundant; the published package name is now `runway-grid` again, matching the custom element and library name.
+8. **GitHub Pages via first-party actions, not a third-party gh-pages package (follow-up decision).** The user asked to add the GitHub Actions option previously proposed for hosting the demo site; `configure-pages`/`upload-pages-artifact`/`deploy-pages` were chosen over a `gh-pages` branch + npm package approach since they're officially maintained by GitHub, require no extra dependency, and integrate directly with the repo's Pages settings ("Source: GitHub Actions"). The `base` path is hardcoded to `/RunwayGrid.js/` (matching the actual repo name) rather than derived dynamically, since it's a one-time, rarely-changing value.
 
 ### Proposed Changes
 
@@ -228,3 +233,16 @@ The published npm package name reverts to `runway-grid` (dropping the `-js` suff
 - Update `README.md`'s `npm install` instruction to `npm install runway-grid`.
 - Update `.github/workflows/release.yml`'s expected tarball filename references (`runway-grid-<version>.tgz`) to match.
 - Leave `.github/workflows/publish-npm.yml` untouched, since it reads the package name dynamically from `package.json` via `node -p "require('./package.json').name"`.
+
+### ✓ Step 8: Document the manual first-publish bootstrap for npm OIDC
+No code/workflow changes; `publish-npm.yml`'s OIDC-based `npm publish` cannot succeed until `runway-grid` exists at least once on the npm registry with a Trusted Publisher configured, so this step records the one-time manual bootstrap the user must perform outside of CI.
+- From a local machine with npm CLI >= 11.5.1: `npm login`, then `npm run build:engine && npm run build:lib` (or rely on the package's `prepublishOnly` hook), then `npm publish --access public --tag rc` from the repo root to create `runway-grid@1.0.0-rc0` on the registry for the first time.
+- On npmjs.com, open the `runway-grid` package's Settings -> Trusted Publisher -> GitHub Actions, and register this repository plus the `publish-npm.yml` workflow filename.
+- Once configured, subsequent pushes to `master` with a version bump will publish automatically via OIDC through `publish-npm.yml`, with no further manual steps or stored secrets needed.
+
+### ✓ Step 9: Deploy the demo site to GitHub Pages
+A new `.github/workflows/deploy-pages.yml` workflow builds and publishes the `demo/` site to GitHub Pages on every push to `master`.
+- Add `base: '/RunwayGrid.js/'` to `vite.config.js` so built asset URLs resolve correctly once served from the GitHub Pages repo subpath.
+- Create `.github/workflows/deploy-pages.yml` triggered on `push` to `master`, with `permissions: { contents: read, pages: write, id-token: write }` and a `concurrency` group to avoid overlapping deployments.
+- Add steps to check out the repo, set up Node, run `npm ci` and `npm run build` (producing `dist-demo/`), then `actions/configure-pages`, `actions/upload-pages-artifact` (path `dist-demo`), and `actions/deploy-pages`.
+- Add a "live demo" link to `README.md` pointing at `https://maximilian27.github.io/RunwayGrid.js/`.
