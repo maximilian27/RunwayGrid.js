@@ -7,10 +7,10 @@ import { fileURLToPath } from 'node:url';
 // `npm run build` (used for the GitHub Pages deployment) would silently drop them.
 const page = (relativePath) => fileURLToPath(new URL(`demo/${relativePath}`, import.meta.url));
 
-export default defineConfig({
+export default defineConfig(({ command }) => ({
   // GitHub Pages serves this repo from a subpath (https://<user>.github.io/RunwayGrid.js/),
-  // so asset URLs must be rooted there instead of at the domain root.
-  base: '/RunwayGrid.js/',
+  // so asset URLs must be rooted there in production builds instead of at the domain root.
+  base: command === 'build' ? '/RunwayGrid.js/' : '/',
   root: 'demo',
   build: {
     outDir: '../dist-demo',
@@ -28,4 +28,4 @@ export default defineConfig({
       },
     },
   },
-});
+}));

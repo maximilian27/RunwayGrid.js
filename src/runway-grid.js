@@ -162,12 +162,20 @@ export class RunwayGrid extends HTMLElement {
     this._virtualScrollTop = 0;
     this._virtualScrollLeft = 0;
 
-    // Touch panning state: captured on `touchstart` and used as the baseline to compute
-    // the 1:1 finger-delta -> virtual-scroll-position mapping in `_onTouchMove`.
-    this._touchStartX = 0;
-    this._touchStartY = 0;
-    this._touchStartScrollTop = 0;
-    this._touchStartScrollLeft = 0;
+    // Touch scrolling and momentum inertia state:
+    // Tracks touch movement incrementally (mirroring wheel deltas) and drives
+    // smooth deceleration flings via requestAnimationFrame on touchend.
+    this._isTouchScrolling = false;
+    this._activeTouchId = null;
+    this._touchTarget = null;
+    this._lastTouchX = 0;
+    this._lastTouchY = 0;
+    this._touchHistory = [];
+    this._momentumRafId = null;
+    this._caughtMomentum = false;
+    this._boundTouchMove = this._onTouchMove.bind(this);
+    this._boundTouchEnd = this._onTouchEnd.bind(this);
+    this._boundTouchCancel = this._onTouchCancel.bind(this);
 
     // `rangechange` batching: while `_batchDepth > 0`, `calculateIndices()` stores its
     // freshly computed event on `_pendingRangeChangeEvent` instead of dispatching it
@@ -200,11 +208,13 @@ export class RunwayGrid extends HTMLElement {
     this.viewport.addEventListener('wheel', this._onWheel.bind(this), { passive: false });
     this.viewport.addEventListener('keydown', this._onKeyDown.bind(this));
 
-    // `touchstart` is passive (it never needs to block native behavior), but `touchmove`
-    // must be non-passive so `_onTouchMove` can call `e.preventDefault()` to stop the page
-    // from panning natively once the gesture has actually moved the grid.
+    // `touchstart` is passive (it never needs to block native behavior), while `touchmove`
+    // and `touchend` must be non-passive so they can call `e.preventDefault()` to prevent
+    // browser touch cancellation and unwanted tap triggers when catching momentum.
     this.viewport.addEventListener('touchstart', this._onTouchStart.bind(this), { passive: true });
     this.viewport.addEventListener('touchmove', this._onTouchMove.bind(this), { passive: false });
+    this.viewport.addEventListener('touchend', this._onTouchEnd.bind(this), { passive: false });
+    this.viewport.addEventListener('touchcancel', this._onTouchCancel.bind(this), { passive: true });
 
     this.resizeObserver = new ResizeObserver(this._onResize.bind(this));
     this.containerObserver = new ResizeObserver(() => {
@@ -215,10 +225,12 @@ export class RunwayGrid extends HTMLElement {
 
   /**
    * Custom element lifecycle callback: removes the window-level `mouseup`
-   * listener registered in {@link RunwayGrid#_bindEvents} to avoid leaking it
-   * once the element is removed from the DOM.
+   * listener registered in {@link RunwayGrid#_bindEvents} and arrests any
+   * running momentum animation to avoid leaking once removed from the DOM.
    */
   disconnectedCallback() {
+    this._stopMomentum();
+    this._detachTouchTargetListeners();
     window.removeEventListener('mouseup', this._handleMouseUp);
   }
 
@@ -228,6 +240,7 @@ export class RunwayGrid extends HTMLElement {
    * {@link RunwayGrid#orientation}, and triggers the initial layout pass.
    */
   connectedCallback() {
+    this._stopMomentum();
     if (this.verticalTrack) this.verticalTrack.scrollTop = 0;
     if (this.horizontalTrack) this.horizontalTrack.scrollLeft = 0;
     this._virtualScrollTop = 0;
@@ -358,6 +371,7 @@ export class RunwayGrid extends HTMLElement {
    */
   _onTrackScroll(axis) {
     if (this._isUpdatingDOM || this._isProgrammaticScroll) return;
+    this._stopMomentum();
 
     const viewportSize = axis === 'vertical' ? this.viewport.clientHeight : this.viewport.clientWidth;
     const track = axis === 'vertical' ? this.verticalTrack : this.horizontalTrack;
@@ -378,6 +392,59 @@ export class RunwayGrid extends HTMLElement {
   }
 
   /**
+   * Applies an incremental scroll delta to the virtual scroll position on
+   * enabled axes, clamping to content boundaries, re-rendering visible cells,
+   * settling tail alignment, and re-syncing the scrollbar tracks.
+   *
+   * @param {number} deltaX Pixel distance to scroll along the horizontal axis.
+   * @param {number} deltaY Pixel distance to scroll along the vertical axis.
+   * @returns {boolean} `true` if the virtual scroll position actually moved on at least one axis.
+   * @private
+   */
+  _scrollByDelta(deltaX, deltaY) {
+    if (!this.registry) return false;
+
+    let moved = false;
+
+    if (this.verticalEnabled && deltaY !== 0) {
+      const maxScroll = this.registry.get_total_height() - this.viewport.clientHeight;
+      if (maxScroll > 0) {
+        const before = this._virtualScrollTop;
+        const after = this._clamp(before + deltaY, 0, maxScroll);
+        if (after !== before) {
+          this._virtualScrollTop = after;
+          moved = true;
+        }
+      }
+    }
+
+    if (this.horizontalEnabled && deltaX !== 0) {
+      const maxScroll = this.registry.get_total_width() - this.viewport.clientWidth;
+      if (maxScroll > 0) {
+        const before = this._virtualScrollLeft;
+        const after = this._clamp(before + deltaX, 0, maxScroll);
+        if (after !== before) {
+          this._virtualScrollLeft = after;
+          moved = true;
+        }
+      }
+    }
+
+    if (moved) {
+      this._beginRangeChangeBatch();
+      try {
+        this.calculateIndices();
+        this._settleAtEnd(this.viewport.clientHeight, this.viewport.clientWidth);
+        this.syncTrackFromVirtual();
+      } finally {
+        this._endRangeChangeBatch();
+      }
+    }
+
+    return moved;
+  }
+
+  /**
    * Handles `wheel` events on the viewport, moving the virtual scroll position
    * on whichever axes are enabled and re-rendering/re-syncing the tracks.
    *
@@ -390,8 +457,8 @@ export class RunwayGrid extends HTMLElement {
    */
   _onWheel(e) {
     if (!this.registry) return;
+    this._stopMomentum();
 
-    let moved = false;
     let hasRoom = false;
 
     if (this.verticalEnabled && e.deltaY !== 0) {
@@ -399,8 +466,6 @@ export class RunwayGrid extends HTMLElement {
       if (maxScroll > 0) {
         const before = this._virtualScrollTop;
         if ((e.deltaY < 0 && before > 0) || (e.deltaY > 0 && before < maxScroll)) hasRoom = true;
-        const after = this._clamp(before + (e.deltaY * 0.3), 0, maxScroll);
-        if (after !== before) { this._virtualScrollTop = after; moved = true; }
       }
     }
 
@@ -409,8 +474,6 @@ export class RunwayGrid extends HTMLElement {
       if (maxScroll > 0) {
         const before = this._virtualScrollLeft;
         if ((e.deltaX < 0 && before > 0) || (e.deltaX > 0 && before < maxScroll)) hasRoom = true;
-        const after = this._clamp(before + (e.deltaX * 0.3), 0, maxScroll);
-        if (after !== before) { this._virtualScrollLeft = after; moved = true; }
       }
     }
 
@@ -418,88 +481,259 @@ export class RunwayGrid extends HTMLElement {
     // let it propagate so an enclosing scroll container (e.g. the page itself) keeps scrolling.
     if (hasRoom) e.preventDefault();
 
-    if (moved) {
-      this._beginRangeChangeBatch();
-      try {
-        this.calculateIndices();
-        this._settleAtEnd(this.viewport.clientHeight, this.viewport.clientWidth);
-        this.syncTrackFromVirtual();
-      } finally {
-        this._endRangeChangeBatch();
-      }
-    }
+    this._scrollByDelta(e.deltaX * 0.3, e.deltaY * 0.3);
   }
 
   /**
-   * Handles `touchstart` on the viewport, capturing the initial single-touch
-   * coordinates and the current virtual scroll position as the baseline for
-   * the 1:1 finger-delta mapping computed in {@link RunwayGrid#_onTouchMove}.
+   * Handles `touchstart` on the viewport: stops any running momentum glide,
+   * captures initial coordinates and timestamp for velocity tracking, and
+   * marks active touch scrolling for single-finger gestures.
    *
-   * Ignores multi-touch gestures (e.g. pinch-zoom) entirely, leaving them to
-   * behave natively.
+   * Multi-touch gestures (e.g. pinch-to-zoom) are ignored so the browser can
+   * handle them natively.
    *
    * @param {TouchEvent} e The touchstart event.
    */
   _onTouchStart(e) {
-    if (e.touches.length !== 1 || !this.registry) return;
-    this._touchStartX = e.touches[0].clientX;
-    this._touchStartY = e.touches[0].clientY;
-    this._touchStartScrollTop = this._virtualScrollTop;
-    this._touchStartScrollLeft = this._virtualScrollLeft;
+    if (!this.registry) return;
+    const hadMomentum = this._momentumRafId !== null;
+    this._stopMomentum();
+    this._detachTouchTargetListeners();
+
+    if (e.touches.length !== 1) {
+      this._isTouchScrolling = false;
+      this._activeTouchId = null;
+      return;
+    }
+
+    const touch = e.touches[0];
+    this._activeTouchId = touch.identifier;
+    this._lastTouchX = touch.clientX;
+    this._lastTouchY = touch.clientY;
+    this._touchHistory = [{ x: touch.clientX, y: touch.clientY, time: performance.now() }];
+    this._isTouchScrolling = true;
+    this._caughtMomentum = hadMomentum;
+
+    // In a virtualized grid, scrolling causes visible rows to be recycled (node.innerHTML is updated).
+    // Under W3C Touch Events, touchmove/touchend events continue to be targeted strictly at the element
+    // hit during touchstart; if that element is detached from the DOM during cell recycling, the events
+    // no longer bubble to viewport/window. Listening directly on e.target ensures we continue receiving
+    // touchmove and touchend events even if the cell content is recycled during the drag.
+    if (e.target && e.target !== this.viewport && typeof e.target.addEventListener === 'function') {
+      this._touchTarget = e.target;
+      this._touchTarget.addEventListener('touchmove', this._boundTouchMove, { passive: false });
+      this._touchTarget.addEventListener('touchend', this._boundTouchEnd, { passive: false });
+      this._touchTarget.addEventListener('touchcancel', this._boundTouchCancel, { passive: true });
+    }
   }
 
   /**
-   * Handles `touchmove` on the viewport, mapping the finger's pixel delta
-   * since `touchstart` 1:1 onto the virtual scroll position of whichever
-   * axes are enabled, then re-rendering and re-syncing the tracks. Mirrors
-   * {@link RunwayGrid#_onWheel}'s clamp/settle/sync flow, but only calls
-   * `e.preventDefault()` once the gesture has actually moved the grid, so a
-   * gesture with no room left to move (e.g. multi-touch, or already at a
-   * scroll bound) can still fall through to native page behavior.
+   * Removes touch gesture listeners from the active touch target.
+   * @private
+   */
+  _detachTouchTargetListeners() {
+    if (this._touchTarget) {
+      this._touchTarget.removeEventListener('touchmove', this._boundTouchMove);
+      this._touchTarget.removeEventListener('touchend', this._boundTouchEnd);
+      this._touchTarget.removeEventListener('touchcancel', this._boundTouchCancel);
+      this._touchTarget = null;
+    }
+  }
+
+  /**
+   * Handles `touchmove` on the viewport, mapping incremental finger deltas
+   * directly to the virtual scroll position on enabled axes. Updates recent
+   * velocity history and suppresses default browser touch behavior to prevent
+   * browser touch cancellation.
    *
    * @param {TouchEvent} e The touchmove event.
    */
   _onTouchMove(e) {
-    if (e.touches.length !== 1 || !this.registry) return;
+    if (e._runwayHandled) return;
+    e._runwayHandled = true;
 
-    const deltaX = this._touchStartX - e.touches[0].clientX;
-    const deltaY = this._touchStartY - e.touches[0].clientY;
+    if (!this._isTouchScrolling || !this.registry) return;
 
-    let moved = false;
+    if (e.touches.length > 1) {
+      this._isTouchScrolling = false;
+      this._activeTouchId = null;
+      this._touchHistory = [];
+      this._detachTouchTargetListeners();
+      return;
+    }
 
-    if (this.verticalEnabled) {
-      const maxV = this.registry.get_total_height() - this.viewport.clientHeight;
-      if (maxV > 0) {
-        const newTop = this._clamp(this._touchStartScrollTop + deltaY, 0, maxV);
-        if (newTop !== this._virtualScrollTop) {
-          this._virtualScrollTop = newTop;
-          moved = true;
+    let touch = null;
+    for (let i = 0; i < e.touches.length; i++) {
+      if (e.touches[i].identifier === this._activeTouchId) {
+        touch = e.touches[i];
+        break;
+      }
+    }
+    if (!touch) return;
+
+    if (e.cancelable && (this.verticalEnabled || this.horizontalEnabled)) {
+      e.preventDefault();
+    }
+
+    this._caughtMomentum = false;
+
+    const deltaX = this._lastTouchX - touch.clientX;
+    const deltaY = this._lastTouchY - touch.clientY;
+    this._lastTouchX = touch.clientX;
+    this._lastTouchY = touch.clientY;
+
+    const now = performance.now();
+    this._touchHistory.push({ x: touch.clientX, y: touch.clientY, time: now });
+    while (this._touchHistory.length > 1 && now - this._touchHistory[0].time > 100) {
+      this._touchHistory.shift();
+    }
+
+    this._scrollByDelta(deltaX, deltaY);
+  }
+
+  /**
+   * Handles `touchend` on the viewport: computes release velocity from recent
+   * touch movement history and triggers momentum/inertial scrolling when flicked.
+   * Also suppresses unwanted click events when tapping to catch a moving list.
+   *
+   * @param {TouchEvent} e The touchend event.
+   */
+  _onTouchEnd(e) {
+    if (e._runwayHandled) return;
+    e._runwayHandled = true;
+
+    if (!this._isTouchScrolling) {
+      this._detachTouchTargetListeners();
+      return;
+    }
+
+    let activeStillPresent = false;
+    for (let i = 0; i < e.touches.length; i++) {
+      if (e.touches[i].identifier === this._activeTouchId) {
+        activeStillPresent = true;
+        break;
+      }
+    }
+    if (activeStillPresent) return;
+
+    this._detachTouchTargetListeners();
+    this._isTouchScrolling = false;
+    this._activeTouchId = null;
+
+    if (this._caughtMomentum) {
+      this._caughtMomentum = false;
+      if (e.cancelable) e.preventDefault();
+      this._touchHistory = [];
+      return;
+    }
+
+    const now = performance.now();
+    if (this._touchHistory.length >= 2) {
+      const latest = this._touchHistory[this._touchHistory.length - 1];
+      if (now - latest.time < 80) {
+        const oldest = this._touchHistory[0];
+        const dt = latest.time - oldest.time;
+        if (dt >= 10) {
+          const vx = (oldest.x - latest.x) / dt;
+          const vy = (oldest.y - latest.y) / dt;
+          this._startMomentum(vx, vy);
         }
       }
     }
+    this._touchHistory = [];
+  }
 
-    if (this.horizontalEnabled) {
-      const maxH = this.registry.get_total_width() - this.viewport.clientWidth;
-      if (maxH > 0) {
-        const newLeft = this._clamp(this._touchStartScrollLeft + deltaX, 0, maxH);
-        if (newLeft !== this._virtualScrollLeft) {
-          this._virtualScrollLeft = newLeft;
-          moved = true;
+  /**
+   * Handles `touchcancel` on the viewport: cancels touch scrolling, stops any
+   * momentum animation, and cleans up touch state.
+   */
+  _onTouchCancel(e) {
+    if (e && e._runwayHandled) return;
+    if (e) e._runwayHandled = true;
+
+    this._detachTouchTargetListeners();
+    this._isTouchScrolling = false;
+    this._activeTouchId = null;
+    this._touchHistory = [];
+    this._caughtMomentum = false;
+    this._stopMomentum();
+  }
+
+  /**
+   * Cancels any running momentum/inertia animation frame.
+   * @private
+   */
+  _stopMomentum() {
+    if (this._momentumRafId !== null) {
+      cancelAnimationFrame(this._momentumRafId);
+      this._momentumRafId = null;
+    }
+  }
+
+  /**
+   * Initiates a momentum/inertia deceleration animation based on release velocity.
+   *
+   * @param {number} vx Initial horizontal velocity in pixels per millisecond.
+   * @param {number} vy Initial vertical velocity in pixels per millisecond.
+   * @private
+   */
+  _startMomentum(vx, vy) {
+    this._stopMomentum();
+
+    if (!this.verticalEnabled) vy = 0;
+    if (!this.horizontalEnabled) vx = 0;
+
+    const speed = Math.hypot(vx, vy);
+    if (speed < 0.15) return;
+
+    const maxSpeed = 4.0;
+    if (speed > maxSpeed) {
+      const scale = maxSpeed / speed;
+      vx *= scale;
+      vy *= scale;
+    }
+
+    let lastTime = performance.now();
+    const friction = 0.955;
+
+    const step = () => {
+      const now = performance.now();
+      const dt = Math.min(now - lastTime, 32);
+      lastTime = now;
+
+      if (dt > 0) {
+        const decay = Math.pow(friction, dt / 16.67);
+        vx *= decay;
+        vy *= decay;
+
+        const dx = vx * dt;
+        const dy = vy * dt;
+
+        this._scrollByDelta(dx, dy);
+
+        if (this.verticalEnabled && Math.abs(vy) > 0.01) {
+          const maxV = this.registry ? this.registry.get_total_height() - this.viewport.clientHeight : 0;
+          if (this._virtualScrollTop <= 0 || this._virtualScrollTop >= maxV) {
+            vy = 0;
+          }
+        }
+        if (this.horizontalEnabled && Math.abs(dx) > 0.01) {
+          const maxH = this.registry ? this.registry.get_total_width() - this.viewport.clientWidth : 0;
+          if (this._virtualScrollLeft <= 0 || this._virtualScrollLeft >= maxH) {
+            vx = 0;
+          }
+        }
+
+        if (Math.hypot(vx, vy) < 0.02 || !this.registry) {
+          this._stopMomentum();
+          return;
         }
       }
-    }
 
-    if (moved) {
-      e.preventDefault(); // Stop native page scrolling while panning the grid.
-      this._beginRangeChangeBatch();
-      try {
-        this.calculateIndices();
-        this._settleAtEnd(this.viewport.clientHeight, this.viewport.clientWidth);
-        this.syncTrackFromVirtual();
-      } finally {
-        this._endRangeChangeBatch();
-      }
-    }
+      this._momentumRafId = requestAnimationFrame(step);
+    };
+
+    this._momentumRafId = requestAnimationFrame(step);
   }
 
   /**
@@ -512,6 +746,7 @@ export class RunwayGrid extends HTMLElement {
     // GUARD: Only intercept keys if the user is focused directly on the grid viewport.
     // This allows inputs/textareas inside cells to function normally.
     if (e.target !== this.viewport) return;
+    this._stopMomentum();
 
     if (!this.registry) return;
     const maxV = this.registry.get_total_height() - this.viewport.clientHeight;
@@ -991,6 +1226,7 @@ export class RunwayGrid extends HTMLElement {
    */
   scrollToCell(rowIndex, colIndex = 0) {
     if (!this.registry) return;
+    this._stopMomentum();
     const vh = this.viewport.clientHeight, vw = this.viewport.clientWidth;
     rowIndex = this._clamp(rowIndex, 0, this.rowCount - 1);
     colIndex = this._clamp(colIndex, 0, this.colCount - 1);
@@ -1068,7 +1304,15 @@ export class RunwayGrid extends HTMLElement {
    * scroll position back to the origin.
    * @param {Array<unknown>} newRows The row data array.
    */
-  set data(newRows) { this.rows = newRows || []; this._virtualScrollTop = 0; this._virtualScrollLeft = 0; this.setupRegistry(); }
+  set data(newRows) {
+    this._stopMomentum();
+    this._isTouchScrolling = false;
+    this._detachTouchTargetListeners();
+    this.rows = newRows || [];
+    this._virtualScrollTop = 0;
+    this._virtualScrollLeft = 0;
+    this.setupRegistry();
+  }
 
   /**
    * Non-destructively appends items to the existing data set, e.g. for infinite
@@ -1161,6 +1405,9 @@ export class RunwayGrid extends HTMLElement {
    * @param {Array<unknown>|number} colsOrCount An array of column definitions, or a column count.
    */
   set columns(colsOrCount) {
+    this._stopMomentum();
+    this._isTouchScrolling = false;
+    this._detachTouchTargetListeners();
     if (Array.isArray(colsOrCount)) { this.columnsData = colsOrCount; this._colCount = colsOrCount.length || 1; }
     else { this.columnsData = null; this._colCount = parseInt(String(colsOrCount), 10) || 1; }
   }
