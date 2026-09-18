@@ -8,6 +8,10 @@
     "email": "maximilian.both27@outlook.com"
   },
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/maximilian27/RunwayGrid.js.git"
+  },
   "main": "./dist/runway-grid.js",
   "module": "./dist/runway-grid.js",
   "types": "./dist/runway-grid.d.ts",
