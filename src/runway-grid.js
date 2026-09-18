@@ -768,12 +768,14 @@ export class RunwayGrid extends HTMLElement {
       const clampedScrollTop = rowBase - translateYRaw;
       const clampedScrollLeft = colBase - translateXRaw;
       const fullRowWidth = this.viewport.clientWidth;
+      const fullRowHeight = this.viewport.clientHeight;
 
       for (let r = 0; r < requiredRows; r++) {
         const rowIndex = startRow + r;
         const rowTop = Math.round(this.registry.get_row_offset(rowIndex) - clampedScrollTop) - translateYRounded;
         const rowGroup = this.renderedRowGroups[r];
         rowGroup.style.top = `${rowTop}px`;
+        if (!this.verticalEnabled) rowGroup.style.height = `${fullRowHeight}px`;
         if (isGrid) rowGroup.setAttribute('aria-rowindex', String(rowIndex + 1));
 
         for (let c = 0; c < requiredCols; c++) {
@@ -784,6 +786,7 @@ export class RunwayGrid extends HTMLElement {
           // positioned relative to its row group, which now carries the vertical offset.
           node.style.left = `${Math.round(this.registry.get_col_offset(colIndex) - clampedScrollLeft) - translateXRounded}px`;
           node.style.width = this.horizontalEnabled ? '' : `${fullRowWidth}px`;
+          node.style.height = this.verticalEnabled ? '' : `${fullRowHeight}px`;
 
           const oldRow = node.getAttribute('data-row');
           const oldCol = node.getAttribute('data-col');

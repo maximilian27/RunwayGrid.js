@@ -542,7 +542,7 @@ details.source pre {
 runway-grid {
   display: block;
   height: 300px;
-  width: 500px;
+  max-width: 500px;
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
   background: var(--color-bg);
