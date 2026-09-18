@@ -7,99 +7,25 @@
  *
  * @module runway-grid
  */
-import init, { VirtualScrollRegistry } from '../runway_engine/pkg/runway_engine.js';
-import { RUNWAY_ENGINE_WASM_BASE64 } from './runway-engine-wasm.js';
+import { ensureWasmInitialized, SAFE_MAX_HEIGHT, VirtualScrollRegistry } from './wasm.js';
+import { COMPONENT_TEMPLATE } from './template.js';
+import {
+  bindEvents,
+  handleWheel,
+  onTouchStart,
+  onTouchMove,
+  onTouchEnd,
+  onTouchCancel,
+  detachTouchTargetListeners,
+  startMomentum,
+  stopMomentum,
+  handleKeyDown,
+  handleTrackScroll,
+  handleMouseUp,
+  handleResize,
+} from './events/index.js';
 
-/**
- * Upper bound (in pixels) applied to spacer element sizes. Browsers silently clamp/ignore
- * extremely large CSS lengths, so the total scrollable extent reported to the DOM (via the
- * spacer's `height`/`width`) is capped at this value, independent of the true virtual size
- * computed by the WASM engine.
- * @type {number}
- */
-const SAFE_MAX_HEIGHT = 10000000;
-
-/**
- * Decodes a base64 string into a `Uint8Array`, used to turn the embedded
- * `RUNWAY_ENGINE_WASM_BASE64` payload back into raw WASM bytes for `init()`.
- *
- * @param {string} base64 Base64-encoded binary data.
- * @returns {Uint8Array} The decoded bytes.
- */
-function base64ToUint8Array(base64) {
-  const binaryString = atob(base64);
-  const bytes = new Uint8Array(binaryString.length);
-  for (let i = 0; i < binaryString.length; i++) bytes[i] = binaryString.charCodeAt(i);
-  return bytes;
-}
-
-/**
- * Cached promise for the WASM module initialization, shared across every
- * `RunwayGrid` instance so the engine is only decoded/instantiated once per page.
- * @type {Promise<unknown>|null}
- */
-let wasmInitPromise = null;
-
-/**
- * Lazily initializes the embedded WASM engine exactly once, regardless of how many
- * `RunwayGrid` instances request it.
- *
- * @returns {Promise<unknown>} Resolves once the WASM module is ready to use.
- */
-function ensureWasmInitialized() {
-  if (!wasmInitPromise) wasmInitPromise = init(base64ToUint8Array(RUNWAY_ENGINE_WASM_BASE64));
-  return wasmInitPromise;
-}
-
-// 1. STATIC TEMPLATE: Parsed once by the browser for faster instantiation
-const COMPONENT_TEMPLATE = document.createElement('template');
-COMPONENT_TEMPLATE.innerHTML = `
-  <style>
-      :host {
-        display: block;
-        position: relative;
-        contain: strict;
-        height: 100%;
-        --runway-grid-scrollbar-size: 10px;
-      }
-      .runway-grid__container { display: flex; flex-direction: column; width: 100%; height: 100%; position: relative; }
-      .runway-grid__row { display: flex; flex: 1; min-height: 0; min-width: 0; position: relative; }
-      .runway-grid__viewport { flex: 1; min-width: 0; overflow: hidden; position: relative; outline: none; touch-action: none; }
-      .runway-grid__wrapper { position: absolute; top: 0; left: 0; will-change: transform; }
-      .runway-grid__rowgroup { position: absolute; top: 0; left: 0; }
-      .runway-grid__cell { position: absolute; top: 0; left: 0; }
-      .runway-grid__track--vertical { 
-        flex-shrink: 0; 
-        overflow-y: scroll; 
-        overflow-x: hidden;
-        scrollbar-width: thin;
-        width: var(--runway-grid-scrollbar-size, 10px);
-       }
-      .runway-grid__spacer--vertical { width: 1px; will-change: height; }
-      .runway-grid__track--horizontal {
-        flex-shrink: 0;
-        height: var(--runway-grid-scrollbar-size, 10px);
-        overflow-x: scroll; 
-        overflow-y: hidden; 
-        scrollbar-width: thin;
-      }
-      .runway-grid__spacer--horizontal { height: 1px; will-change: width; }
-      .runway-grid__track--disabled { display: none; }
-  </style>
-  <div class="runway-grid__container" part="container">
-      <div class="runway-grid__row" part="row">
-          <div class="runway-grid__viewport" part="viewport" tabindex="0">
-              <div class="runway-grid__wrapper" part="wrapper"></div>
-          </div>
-          <div class="runway-grid__track runway-grid__track--vertical" part="track track-vertical">
-              <div class="runway-grid__spacer runway-grid__spacer--vertical" part="spacer spacer-vertical"></div>
-          </div>
-      </div>
-      <div class="runway-grid__track runway-grid__track--horizontal" part="track track-horizontal">
-          <div class="runway-grid__spacer runway-grid__spacer--horizontal" part="spacer spacer-horizontal"></div>
-      </div>
-  </div>
-`;
+export { SAFE_MAX_HEIGHT, VirtualScrollRegistry };
 
 /**
  * The `<runway-grid>` custom element. See the module doc for an overview.
@@ -162,6 +88,13 @@ export class RunwayGrid extends HTMLElement {
     this._virtualScrollTop = 0;
     this._virtualScrollLeft = 0;
 
+    /** @type {ResizeObserver|null} */
+    this.resizeObserver = null;
+    /** @type {ResizeObserver|null} */
+    this.containerObserver = null;
+    /** @type {EventListener|null} */
+    this._handleMouseUp = null;
+
     // Touch scrolling and momentum inertia state:
     // Tracks touch movement incrementally (mirroring wheel deltas) and drives
     // smooth deceleration flings via requestAnimationFrame on touchend.
@@ -173,9 +106,9 @@ export class RunwayGrid extends HTMLElement {
     this._touchHistory = [];
     this._momentumRafId = null;
     this._caughtMomentum = false;
-    this._boundTouchMove = this._onTouchMove.bind(this);
-    this._boundTouchEnd = this._onTouchEnd.bind(this);
-    this._boundTouchCancel = this._onTouchCancel.bind(this);
+    this._boundTouchMove = (e) => this._onTouchMove(e);
+    this._boundTouchEnd = (e) => this._onTouchEnd(e);
+    this._boundTouchCancel = (e) => this._onTouchCancel(e);
 
     // `rangechange` batching: while `_batchDepth > 0`, `calculateIndices()` stores its
     // freshly computed event on `_pendingRangeChangeEvent` instead of dispatching it
@@ -196,31 +129,7 @@ export class RunwayGrid extends HTMLElement {
    * @private
    */
   _bindEvents() {
-    this._handleMouseUp = this._onMouseUp.bind(this);
-    window.addEventListener('mouseup', this._handleMouseUp);
-
-    this.verticalTrack.addEventListener('mousedown', () => { this._isDraggingVertical = true; });
-    this.horizontalTrack.addEventListener('mousedown', () => { this._isDraggingHorizontal = true; });
-
-    this.verticalTrack.addEventListener('scroll', () => this._onTrackScroll('vertical'));
-    this.horizontalTrack.addEventListener('scroll', () => this._onTrackScroll('horizontal'));
-
-    this.viewport.addEventListener('wheel', this._onWheel.bind(this), { passive: false });
-    this.viewport.addEventListener('keydown', this._onKeyDown.bind(this));
-
-    // `touchstart` is passive (it never needs to block native behavior), while `touchmove`
-    // and `touchend` must be non-passive so they can call `e.preventDefault()` to prevent
-    // browser touch cancellation and unwanted tap triggers when catching momentum.
-    this.viewport.addEventListener('touchstart', this._onTouchStart.bind(this), { passive: true });
-    this.viewport.addEventListener('touchmove', this._onTouchMove.bind(this), { passive: false });
-    this.viewport.addEventListener('touchend', this._onTouchEnd.bind(this), { passive: false });
-    this.viewport.addEventListener('touchcancel', this._onTouchCancel.bind(this), { passive: true });
-
-    this.resizeObserver = new ResizeObserver(this._onResize.bind(this));
-    this.containerObserver = new ResizeObserver(() => {
-      if (this.viewport.clientHeight > 0 || this.viewport.clientWidth > 0) this.calculateIndices();
-    });
-    this.containerObserver.observe(this);
+    bindEvents(this);
   }
 
   /**
@@ -364,31 +273,12 @@ export class RunwayGrid extends HTMLElement {
   /**
    * Handles a native `scroll` event on one of the (visible) scrollbar tracks,
    * translating the track's scroll position into the corresponding virtual
-   * scroll position and re-rendering. Ignored while a programmatic/DOM update
-   * is already in progress to avoid feedback loops.
+   * scroll position and re-rendering.
    *
    * @param {'vertical'|'horizontal'} axis Which track fired the scroll event.
    */
   _onTrackScroll(axis) {
-    if (this._isUpdatingDOM || this._isProgrammaticScroll) return;
-    this._stopMomentum();
-
-    const viewportSize = axis === 'vertical' ? this.viewport.clientHeight : this.viewport.clientWidth;
-    const track = axis === 'vertical' ? this.verticalTrack : this.horizontalTrack;
-    const scrollPos = Math.max(0, axis === 'vertical' ? track.scrollTop : track.scrollLeft);
-
-    const virtualPos = this._trackToVirtual(scrollPos, viewportSize, axis);
-
-    if (axis === 'vertical') this._virtualScrollTop = virtualPos;
-    else this._virtualScrollLeft = virtualPos;
-
-    this._beginRangeChangeBatch();
-    try {
-      this.calculateIndices();
-      this._settleAtEnd(this.viewport.clientHeight, this.viewport.clientWidth);
-    } finally {
-      this._endRangeChangeBatch();
-    }
+    handleTrackScroll(this, axis);
   }
 
   /**
@@ -448,40 +338,10 @@ export class RunwayGrid extends HTMLElement {
    * Handles `wheel` events on the viewport, moving the virtual scroll position
    * on whichever axes are enabled and re-rendering/re-syncing the tracks.
    *
-   * Only calls `e.preventDefault()` on axes that actually have room left to move in the
-   * wheel gesture's direction - once the grid is already at its scroll bound on every
-   * enabled axis, the event is left alone so it can bubble up to (and scroll-chain into) a
-   * parent scrollable container, instead of just dead-ending the page/container scroll.
-   *
    * @param {WheelEvent} e The wheel event.
    */
   _onWheel(e) {
-    if (!this.registry) return;
-    this._stopMomentum();
-
-    let hasRoom = false;
-
-    if (this.verticalEnabled && e.deltaY !== 0) {
-      const maxScroll = this.registry.get_total_height() - this.viewport.clientHeight;
-      if (maxScroll > 0) {
-        const before = this._virtualScrollTop;
-        if ((e.deltaY < 0 && before > 0) || (e.deltaY > 0 && before < maxScroll)) hasRoom = true;
-      }
-    }
-
-    if (this.horizontalEnabled && e.deltaX !== 0) {
-      const maxScroll = this.registry.get_total_width() - this.viewport.clientWidth;
-      if (maxScroll > 0) {
-        const before = this._virtualScrollLeft;
-        if ((e.deltaX < 0 && before > 0) || (e.deltaX > 0 && before < maxScroll)) hasRoom = true;
-      }
-    }
-
-    // Claim the wheel gesture only when it actually moves the grid on some axis - otherwise
-    // let it propagate so an enclosing scroll container (e.g. the page itself) keeps scrolling.
-    if (hasRoom) e.preventDefault();
-
-    this._scrollByDelta(e.deltaX * 0.3, e.deltaY * 0.3);
+    handleWheel(this, e);
   }
 
   /**
@@ -489,42 +349,10 @@ export class RunwayGrid extends HTMLElement {
    * captures initial coordinates and timestamp for velocity tracking, and
    * marks active touch scrolling for single-finger gestures.
    *
-   * Multi-touch gestures (e.g. pinch-to-zoom) are ignored so the browser can
-   * handle them natively.
-   *
    * @param {TouchEvent} e The touchstart event.
    */
   _onTouchStart(e) {
-    if (!this.registry) return;
-    const hadMomentum = this._momentumRafId !== null;
-    this._stopMomentum();
-    this._detachTouchTargetListeners();
-
-    if (e.touches.length !== 1) {
-      this._isTouchScrolling = false;
-      this._activeTouchId = null;
-      return;
-    }
-
-    const touch = e.touches[0];
-    this._activeTouchId = touch.identifier;
-    this._lastTouchX = touch.clientX;
-    this._lastTouchY = touch.clientY;
-    this._touchHistory = [{ x: touch.clientX, y: touch.clientY, time: performance.now() }];
-    this._isTouchScrolling = true;
-    this._caughtMomentum = hadMomentum;
-
-    // In a virtualized grid, scrolling causes visible rows to be recycled (node.innerHTML is updated).
-    // Under W3C Touch Events, touchmove/touchend events continue to be targeted strictly at the element
-    // hit during touchstart; if that element is detached from the DOM during cell recycling, the events
-    // no longer bubble to viewport/window. Listening directly on e.target ensures we continue receiving
-    // touchmove and touchend events even if the cell content is recycled during the drag.
-    if (e.target && e.target !== this.viewport && typeof e.target.addEventListener === 'function') {
-      this._touchTarget = e.target;
-      this._touchTarget.addEventListener('touchmove', this._boundTouchMove, { passive: false });
-      this._touchTarget.addEventListener('touchend', this._boundTouchEnd, { passive: false });
-      this._touchTarget.addEventListener('touchcancel', this._boundTouchCancel, { passive: true });
-    }
+    onTouchStart(this, e);
   }
 
   /**
@@ -532,131 +360,37 @@ export class RunwayGrid extends HTMLElement {
    * @private
    */
   _detachTouchTargetListeners() {
-    if (this._touchTarget) {
-      this._touchTarget.removeEventListener('touchmove', this._boundTouchMove);
-      this._touchTarget.removeEventListener('touchend', this._boundTouchEnd);
-      this._touchTarget.removeEventListener('touchcancel', this._boundTouchCancel);
-      this._touchTarget = null;
-    }
+    detachTouchTargetListeners(this);
   }
 
   /**
    * Handles `touchmove` on the viewport, mapping incremental finger deltas
-   * directly to the virtual scroll position on enabled axes. Updates recent
-   * velocity history and suppresses default browser touch behavior to prevent
-   * browser touch cancellation.
+   * directly to the virtual scroll position on enabled axes.
    *
    * @param {TouchEvent} e The touchmove event.
    */
   _onTouchMove(e) {
-    if (e._runwayHandled) return;
-    e._runwayHandled = true;
-
-    if (!this._isTouchScrolling || !this.registry) return;
-
-    if (e.touches.length > 1) {
-      this._isTouchScrolling = false;
-      this._activeTouchId = null;
-      this._touchHistory = [];
-      this._detachTouchTargetListeners();
-      return;
-    }
-
-    let touch = null;
-    for (let i = 0; i < e.touches.length; i++) {
-      if (e.touches[i].identifier === this._activeTouchId) {
-        touch = e.touches[i];
-        break;
-      }
-    }
-    if (!touch) return;
-
-    if (e.cancelable && (this.verticalEnabled || this.horizontalEnabled)) {
-      e.preventDefault();
-    }
-
-    this._caughtMomentum = false;
-
-    const deltaX = this._lastTouchX - touch.clientX;
-    const deltaY = this._lastTouchY - touch.clientY;
-    this._lastTouchX = touch.clientX;
-    this._lastTouchY = touch.clientY;
-
-    const now = performance.now();
-    this._touchHistory.push({ x: touch.clientX, y: touch.clientY, time: now });
-    while (this._touchHistory.length > 1 && now - this._touchHistory[0].time > 100) {
-      this._touchHistory.shift();
-    }
-
-    this._scrollByDelta(deltaX, deltaY);
+    onTouchMove(this, e);
   }
 
   /**
    * Handles `touchend` on the viewport: computes release velocity from recent
    * touch movement history and triggers momentum/inertial scrolling when flicked.
-   * Also suppresses unwanted click events when tapping to catch a moving list.
    *
    * @param {TouchEvent} e The touchend event.
    */
   _onTouchEnd(e) {
-    if (e._runwayHandled) return;
-    e._runwayHandled = true;
-
-    if (!this._isTouchScrolling) {
-      this._detachTouchTargetListeners();
-      return;
-    }
-
-    let activeStillPresent = false;
-    for (let i = 0; i < e.touches.length; i++) {
-      if (e.touches[i].identifier === this._activeTouchId) {
-        activeStillPresent = true;
-        break;
-      }
-    }
-    if (activeStillPresent) return;
-
-    this._detachTouchTargetListeners();
-    this._isTouchScrolling = false;
-    this._activeTouchId = null;
-
-    if (this._caughtMomentum) {
-      this._caughtMomentum = false;
-      if (e.cancelable) e.preventDefault();
-      this._touchHistory = [];
-      return;
-    }
-
-    const now = performance.now();
-    if (this._touchHistory.length >= 2) {
-      const latest = this._touchHistory[this._touchHistory.length - 1];
-      if (now - latest.time < 80) {
-        const oldest = this._touchHistory[0];
-        const dt = latest.time - oldest.time;
-        if (dt >= 10) {
-          const vx = (oldest.x - latest.x) / dt;
-          const vy = (oldest.y - latest.y) / dt;
-          this._startMomentum(vx, vy);
-        }
-      }
-    }
-    this._touchHistory = [];
+    onTouchEnd(this, e);
   }
 
   /**
    * Handles `touchcancel` on the viewport: cancels touch scrolling, stops any
    * momentum animation, and cleans up touch state.
+   *
+   * @param {TouchEvent} [e] The touchcancel event.
    */
   _onTouchCancel(e) {
-    if (e && e._runwayHandled) return;
-    if (e) e._runwayHandled = true;
-
-    this._detachTouchTargetListeners();
-    this._isTouchScrolling = false;
-    this._activeTouchId = null;
-    this._touchHistory = [];
-    this._caughtMomentum = false;
-    this._stopMomentum();
+    onTouchCancel(this, e);
   }
 
   /**
@@ -664,10 +398,7 @@ export class RunwayGrid extends HTMLElement {
    * @private
    */
   _stopMomentum() {
-    if (this._momentumRafId !== null) {
-      cancelAnimationFrame(this._momentumRafId);
-      this._momentumRafId = null;
-    }
+    stopMomentum(this);
   }
 
   /**
@@ -678,62 +409,7 @@ export class RunwayGrid extends HTMLElement {
    * @private
    */
   _startMomentum(vx, vy) {
-    this._stopMomentum();
-
-    if (!this.verticalEnabled) vy = 0;
-    if (!this.horizontalEnabled) vx = 0;
-
-    const speed = Math.hypot(vx, vy);
-    if (speed < 0.15) return;
-
-    const maxSpeed = 4.0;
-    if (speed > maxSpeed) {
-      const scale = maxSpeed / speed;
-      vx *= scale;
-      vy *= scale;
-    }
-
-    let lastTime = performance.now();
-    const friction = 0.955;
-
-    const step = () => {
-      const now = performance.now();
-      const dt = Math.min(now - lastTime, 32);
-      lastTime = now;
-
-      if (dt > 0) {
-        const decay = Math.pow(friction, dt / 16.67);
-        vx *= decay;
-        vy *= decay;
-
-        const dx = vx * dt;
-        const dy = vy * dt;
-
-        this._scrollByDelta(dx, dy);
-
-        if (this.verticalEnabled && Math.abs(vy) > 0.01) {
-          const maxV = this.registry ? this.registry.get_total_height() - this.viewport.clientHeight : 0;
-          if (this._virtualScrollTop <= 0 || this._virtualScrollTop >= maxV) {
-            vy = 0;
-          }
-        }
-        if (this.horizontalEnabled && Math.abs(dx) > 0.01) {
-          const maxH = this.registry ? this.registry.get_total_width() - this.viewport.clientWidth : 0;
-          if (this._virtualScrollLeft <= 0 || this._virtualScrollLeft >= maxH) {
-            vx = 0;
-          }
-        }
-
-        if (Math.hypot(vx, vy) < 0.02 || !this.registry) {
-          this._stopMomentum();
-          return;
-        }
-      }
-
-      this._momentumRafId = requestAnimationFrame(step);
-    };
-
-    this._momentumRafId = requestAnimationFrame(step);
+    startMomentum(this, vx, vy);
   }
 
   /**
@@ -743,40 +419,7 @@ export class RunwayGrid extends HTMLElement {
    * @param {KeyboardEvent} e The keydown event.
    */
   _onKeyDown(e) {
-    // GUARD: Only intercept keys if the user is focused directly on the grid viewport.
-    // This allows inputs/textareas inside cells to function normally.
-    if (e.target !== this.viewport) return;
-    this._stopMomentum();
-
-    if (!this.registry) return;
-    const maxV = this.registry.get_total_height() - this.viewport.clientHeight;
-    const maxH = this.registry.get_total_width() - this.viewport.clientWidth;
-    let changed = true;
-
-    switch (e.key) {
-      case 'ArrowDown': if (!this.verticalEnabled) { changed = false; break; } e.preventDefault(); this._virtualScrollTop += this.rowSize; break;
-      case 'ArrowUp': if (!this.verticalEnabled) { changed = false; break; } e.preventDefault(); this._virtualScrollTop -= this.rowSize; break;
-      case 'ArrowRight': if (!this.horizontalEnabled) { changed = false; break; } e.preventDefault(); this._virtualScrollLeft += this.colSize; break;
-      case 'ArrowLeft': if (!this.horizontalEnabled) { changed = false; break; } e.preventDefault(); this._virtualScrollLeft -= this.colSize; break;
-      case 'PageDown': if (!this.verticalEnabled) { changed = false; break; } e.preventDefault(); this._virtualScrollTop += this.viewport.clientHeight; break;
-      case 'PageUp': if (!this.verticalEnabled) { changed = false; break; } e.preventDefault(); this._virtualScrollTop -= this.viewport.clientHeight; break;
-      case 'Home': e.preventDefault(); if (this.verticalEnabled) this._virtualScrollTop = 0; if (this.horizontalEnabled) this._virtualScrollLeft = 0; break;
-      case 'End': e.preventDefault(); if (this.verticalEnabled) this._virtualScrollTop = maxV; if (this.horizontalEnabled) this._virtualScrollLeft = maxH; break;
-      default: changed = false; break;
-    }
-
-    if (changed) {
-      if (this.verticalEnabled) this._virtualScrollTop = this._clamp(this._virtualScrollTop, 0, maxV);
-      if (this.horizontalEnabled) this._virtualScrollLeft = this._clamp(this._virtualScrollLeft, 0, maxH);
-      this._beginRangeChangeBatch();
-      try {
-        this.calculateIndices();
-        this._settleAtEnd(this.viewport.clientHeight, this.viewport.clientWidth);
-        this.syncTrackFromVirtual();
-      } finally {
-        this._endRangeChangeBatch();
-      }
-    }
+    handleKeyDown(this, e);
   }
 
   /**
@@ -784,39 +427,18 @@ export class RunwayGrid extends HTMLElement {
    * (if one was in progress) and settling/re-syncing the final position.
    */
   _onMouseUp() {
-    if (this._isDraggingVertical || this._isDraggingHorizontal) {
-      this._isDraggingVertical = false;
-      this._isDraggingHorizontal = false;
-      this._settleAtEnd(this.viewport.clientHeight, this.viewport.clientWidth);
-      this.updateSpacer();
-      this.syncTrackFromVirtual();
-    }
+    handleMouseUp(this);
   }
 
   /**
    * `ResizeObserver` callback for individual rendered cells: re-measures cells
    * whose natural size may have changed, feeds updated sizes back into the
-   * WASM registry, and preserves the "stuck to the end" scroll position if the
-   * viewport was scrolled all the way to the bottom/right when sizes changed.
+   * WASM registry, and preserves the "stuck to the end" scroll position.
    *
-   * @param {ResizeObserverEntry[]} entries Entries reported by the observer (unused; sizes are re-measured directly from the DOM).
+   * @param {ResizeObserverEntry[]} entries Entries reported by the observer.
    */
   _onResize(entries) {
-    if (!this.registry || this._isUpdatingDOM) return;
-
-    const vh = this.viewport.clientHeight;
-    const vw = this.viewport.clientWidth;
-    const wasAtVEnd = this.verticalEnabled && Math.abs(this._virtualScrollTop - (this.registry.get_total_height() - vh)) < 1;
-    const wasAtHEnd = this.horizontalEnabled && Math.abs(this._virtualScrollLeft - (this.registry.get_total_width() - vw)) < 1;
-
-    const { rowMax, colMax } = this._measureRenderedSizes();
-    if (this._applyMeasuredSizes(rowMax, colMax)) {
-      if (wasAtVEnd) this._virtualScrollTop = Math.max(0, this.registry.get_total_height() - vh);
-      if (wasAtHEnd) this._virtualScrollLeft = Math.max(0, this.registry.get_total_width() - vw);
-      this.updateSpacer();
-      this.syncTrackFromVirtual();
-      this.calculateIndices();
-    }
+    handleResize(this, entries);
   }
 
   // --- CORE LOGIC & MATH ---
@@ -962,9 +584,7 @@ export class RunwayGrid extends HTMLElement {
    * row/column range and wrapper translation for the current scroll position
    * and viewport size, applies the (rounded) wrapper transform, dispatches the
    * `rangechange` event, and delegates DOM reconciliation to
-   * {@link RunwayGrid#applyChanges}. No-op until a `template` and registry exist,
-   * the enabled axes have a non-zero row/column count, and (for the very first
-   * call) the viewport has been laid out at least once.
+   * {@link RunwayGrid#applyChanges}.
    */
   calculateIndices() {
     if (!this.renderItem || !this.registry) return;
@@ -1149,8 +769,6 @@ export class RunwayGrid extends HTMLElement {
   /**
    * Measures the actual rendered (natural) height/width of every currently
    * rendered cell, keeping the largest measurement seen per row/column index.
-   * Used to feed real content sizes back into the WASM registry for
-   * auto-sizing rows/columns whose size wasn't explicitly fixed.
    *
    * @returns {{rowMax: Map<number, number>, colMax: Map<number, number>}}
    *   Maps of row index -> max measured height and column index -> max measured width.
@@ -1171,8 +789,7 @@ export class RunwayGrid extends HTMLElement {
   }
 
   /**
-   * Feeds measured row heights/column widths (from {@link RunwayGrid#_measureRenderedSizes})
-   * into the WASM registry, updating each axis's auto-measured sizes.
+   * Feeds measured row heights/column widths into the WASM registry.
    *
    * @param {Map<number, number>} rowMax Row index -> measured height map.
    * @param {Map<number, number>} colMax Column index -> measured width map.
@@ -1192,10 +809,7 @@ export class RunwayGrid extends HTMLElement {
 
   /**
    * Corrects the residual sub-pixel gap that can appear when the viewport is
-   * scrolled to (or very near) the end of the content: re-measures rendered
-   * cells, applies any resulting size changes to the registry, and - if the
-   * scroll position was at the end - re-snaps it to the newly recomputed end
-   * position before re-rendering.
+   * scrolled to (or very near) the end of the content.
    *
    * @param {number} vh Current viewport `clientHeight`.
    * @param {number} vw Current viewport `clientWidth`.
@@ -1217,9 +831,7 @@ export class RunwayGrid extends HTMLElement {
 
   /**
    * Scrolls so that the given row/column cell is visible, snapping precisely
-   * to its final measured position (re-measuring and re-applying sizes as
-   * needed so that cells with auto/natural sizing don't leave the target
-   * slightly out of view).
+   * to its final measured position.
    *
    * @param {number} rowIndex Zero-based row index to scroll to.
    * @param {number} [colIndex=0] Zero-based column index to scroll to.
@@ -1316,17 +928,7 @@ export class RunwayGrid extends HTMLElement {
 
   /**
    * Non-destructively appends items to the existing data set, e.g. for infinite
-   * scroll pagination. Unlike {@link RunwayGrid#data}/{@link RunwayGrid#columns},
-   * this does not rebuild the WASM registry or reset the scroll position: new
-   * default-sized rows/columns are pushed onto the registry's corresponding axis
-   * (preserving every previously auto-measured row height/column width), the
-   * spacer is resized so the native scrollbar track immediately reflects the new
-   * virtual size, and the viewport stays locked at the user's current read position.
-   *
-   * For `orientation="horizontal"`, items are appended along the column axis
-   * (mirroring {@link RunwayGrid#columns}, which is what drives `colCount` for a
-   * horizontal list); for `orientation="vertical"`/`"both"`, items are appended
-   * along the row axis (mirroring {@link RunwayGrid#data}).
+   * scroll pagination.
    *
    * @param {Array<unknown>} newItems The rows (or, for `orientation="horizontal"`, columns) to append after the current data set.
    */
@@ -1357,17 +959,7 @@ export class RunwayGrid extends HTMLElement {
   /**
    * Non-destructively drops the first `count` items from the existing data set,
    * e.g. to cap memory usage ("sliding window") once an infinite-scroll list has
-   * grown past some limit. Splices the removed items out of the JS-side array,
-   * removes the matching slots from the WASM registry, and counter-scrolls the
-   * viewport by the exact pixel amount that vanished - so the user never sees a
-   * jump, even though the underlying array just shrank.
-   *
-   * For `orientation="horizontal"`, items are removed from the column axis
-   * (mirroring {@link RunwayGrid#appendData}); for `orientation="vertical"`/`"both"`,
-   * items are removed from the row axis. The `_virtualScrollTop`/`_virtualScrollLeft`
-   * compensation, `updateSpacer()`, `syncTrackFromVirtual()`, and `calculateIndices()`
-   * all happen synchronously in this same call, so the browser repaints the shifted
-   * grid in a single frame with no visible jump.
+   * grown past some limit.
    *
    * @param {number} count Number of items to remove from the head of the data set.
    */
@@ -1414,12 +1006,6 @@ export class RunwayGrid extends HTMLElement {
 
   /**
    * Sets the cell rendering function, then immediately re-renders.
-   *
-   * **Security note:** a returned `string` is assigned via `innerHTML`, so any value
-   * interpolated into it (e.g. `rowItem` fields sourced from user input) is parsed as HTML,
-   * not text - this is an XSS surface. Escape/sanitize untrusted content before interpolating
-   * it (or build a `Node`/`DocumentFragment` and use text APIs like `textContent` instead of
-   * returning a raw HTML string) whenever `rowItem` may contain attacker-controlled data.
    *
    * @param {(rowItem: unknown, rowIndex: number, colIndex: number, rowCount: number, colCount: number) => (string|Node|null|undefined)} renderFn
    *   Renders a single cell's content: return an HTML string (assigned via `innerHTML`) or a `Node` (appended as-is).

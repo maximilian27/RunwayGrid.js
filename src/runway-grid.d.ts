@@ -105,14 +105,14 @@ export declare class RunwayGrid extends HTMLElement {
    * Whether initializing the shared embedded WASM engine has completed successfully.
    * Remains `false` forever if initialization failed - see {@link RunwayGrid.wasmInitError}.
    */
-  readonly wasmInitialized: boolean;
+  wasmInitialized: boolean;
 
   /**
    * The error caught while initializing the shared embedded WASM engine, or `null` if
    * initialization has not failed (either still pending, or completed successfully). Also
    * exposed via the `wasmerror` event's `detail.error`.
    */
-  readonly wasmInitError: unknown;
+  wasmInitError: unknown;
 
   /**
    * The row data. Setting it (re)builds the internal layout registry and
