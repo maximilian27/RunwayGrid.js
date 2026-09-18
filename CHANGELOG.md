@@ -5,11 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
-## [1.0.0-rc1] - 2026-09-16
+
+## [1.0.0-rc1] - 2026-09-18
 
 ### Added
 
 - `deploy-pages` workflow.
+- Mobile touch-panning support: `touchstart`/`touchmove` on the viewport are now mapped 1:1 to
+  the virtual scroll position (mirroring the existing `wheel` handling), so swiping directly on
+  the grid scrolls it on touch devices instead of only being scrollable by dragging the (tiny)
+  scrollbar track. The viewport now also sets `touch-action: none` to stop the browser from
+  fighting the gesture with native pull-to-refresh/page panning.
 
 ## [1.0.0-rc0] - 2026-09-15
 

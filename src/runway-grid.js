@@ -64,7 +64,7 @@ COMPONENT_TEMPLATE.innerHTML = `
       }
       .runway-grid__container { display: flex; flex-direction: column; width: 100%; height: 100%; position: relative; }
       .runway-grid__row { display: flex; flex: 1; min-height: 0; min-width: 0; position: relative; }
-      .runway-grid__viewport { flex: 1; min-width: 0; overflow: hidden; position: relative; outline: none; }
+      .runway-grid__viewport { flex: 1; min-width: 0; overflow: hidden; position: relative; outline: none; touch-action: none; }
       .runway-grid__wrapper { position: absolute; top: 0; left: 0; will-change: transform; }
       .runway-grid__rowgroup { position: absolute; top: 0; left: 0; }
       .runway-grid__cell { position: absolute; top: 0; left: 0; }
@@ -162,6 +162,13 @@ export class RunwayGrid extends HTMLElement {
     this._virtualScrollTop = 0;
     this._virtualScrollLeft = 0;
 
+    // Touch panning state: captured on `touchstart` and used as the baseline to compute
+    // the 1:1 finger-delta -> virtual-scroll-position mapping in `_onTouchMove`.
+    this._touchStartX = 0;
+    this._touchStartY = 0;
+    this._touchStartScrollTop = 0;
+    this._touchStartScrollLeft = 0;
+
     // `rangechange` batching: while `_batchDepth > 0`, `calculateIndices()` stores its
     // freshly computed event on `_pendingRangeChangeEvent` instead of dispatching it
     // immediately, so a public method that internally calls `calculateIndices()` several
@@ -192,6 +199,12 @@ export class RunwayGrid extends HTMLElement {
 
     this.viewport.addEventListener('wheel', this._onWheel.bind(this), { passive: false });
     this.viewport.addEventListener('keydown', this._onKeyDown.bind(this));
+
+    // `touchstart` is passive (it never needs to block native behavior), but `touchmove`
+    // must be non-passive so `_onTouchMove` can call `e.preventDefault()` to stop the page
+    // from panning natively once the gesture has actually moved the grid.
+    this.viewport.addEventListener('touchstart', this._onTouchStart.bind(this), { passive: true });
+    this.viewport.addEventListener('touchmove', this._onTouchMove.bind(this), { passive: false });
 
     this.resizeObserver = new ResizeObserver(this._onResize.bind(this));
     this.containerObserver = new ResizeObserver(() => {
@@ -406,6 +419,78 @@ export class RunwayGrid extends HTMLElement {
     if (hasRoom) e.preventDefault();
 
     if (moved) {
+      this._beginRangeChangeBatch();
+      try {
+        this.calculateIndices();
+        this._settleAtEnd(this.viewport.clientHeight, this.viewport.clientWidth);
+        this.syncTrackFromVirtual();
+      } finally {
+        this._endRangeChangeBatch();
+      }
+    }
+  }
+
+  /**
+   * Handles `touchstart` on the viewport, capturing the initial single-touch
+   * coordinates and the current virtual scroll position as the baseline for
+   * the 1:1 finger-delta mapping computed in {@link RunwayGrid#_onTouchMove}.
+   *
+   * Ignores multi-touch gestures (e.g. pinch-zoom) entirely, leaving them to
+   * behave natively.
+   *
+   * @param {TouchEvent} e The touchstart event.
+   */
+  _onTouchStart(e) {
+    if (e.touches.length !== 1 || !this.registry) return;
+    this._touchStartX = e.touches[0].clientX;
+    this._touchStartY = e.touches[0].clientY;
+    this._touchStartScrollTop = this._virtualScrollTop;
+    this._touchStartScrollLeft = this._virtualScrollLeft;
+  }
+
+  /**
+   * Handles `touchmove` on the viewport, mapping the finger's pixel delta
+   * since `touchstart` 1:1 onto the virtual scroll position of whichever
+   * axes are enabled, then re-rendering and re-syncing the tracks. Mirrors
+   * {@link RunwayGrid#_onWheel}'s clamp/settle/sync flow, but only calls
+   * `e.preventDefault()` once the gesture has actually moved the grid, so a
+   * gesture with no room left to move (e.g. multi-touch, or already at a
+   * scroll bound) can still fall through to native page behavior.
+   *
+   * @param {TouchEvent} e The touchmove event.
+   */
+  _onTouchMove(e) {
+    if (e.touches.length !== 1 || !this.registry) return;
+
+    const deltaX = this._touchStartX - e.touches[0].clientX;
+    const deltaY = this._touchStartY - e.touches[0].clientY;
+
+    let moved = false;
+
+    if (this.verticalEnabled) {
+      const maxV = this.registry.get_total_height() - this.viewport.clientHeight;
+      if (maxV > 0) {
+        const newTop = this._clamp(this._touchStartScrollTop + deltaY, 0, maxV);
+        if (newTop !== this._virtualScrollTop) {
+          this._virtualScrollTop = newTop;
+          moved = true;
+        }
+      }
+    }
+
+    if (this.horizontalEnabled) {
+      const maxH = this.registry.get_total_width() - this.viewport.clientWidth;
+      if (maxH > 0) {
+        const newLeft = this._clamp(this._touchStartScrollLeft + deltaX, 0, maxH);
+        if (newLeft !== this._virtualScrollLeft) {
+          this._virtualScrollLeft = newLeft;
+          moved = true;
+        }
+      }
+    }
+
+    if (moved) {
+      e.preventDefault(); // Stop native page scrolling while panning the grid.
       this._beginRangeChangeBatch();
       try {
         this.calculateIndices();
