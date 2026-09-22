@@ -13,7 +13,8 @@ import { RUNWAY_ENGINE_WASM_BASE64 } from './runway-engine-wasm.js';
  * computed by the WASM engine.
  * @type {number}
  */
-export const SAFE_MAX_HEIGHT = 10000000;
+export const SAFE_MAX_SPACER_SIZE = 10000000;
+export const SAFE_MAX_HEIGHT = SAFE_MAX_SPACER_SIZE;
 
 /**
  * Decodes a base64 string into a `Uint8Array`, used to turn the embedded

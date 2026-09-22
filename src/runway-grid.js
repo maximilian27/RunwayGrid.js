@@ -7,7 +7,7 @@
  *
  * @module runway-grid
  */
-import { ensureWasmInitialized, SAFE_MAX_HEIGHT, VirtualScrollRegistry } from './wasm.js';
+import { ensureWasmInitialized, SAFE_MAX_HEIGHT, SAFE_MAX_SPACER_SIZE, VirtualScrollRegistry } from './wasm.js';
 import { COMPONENT_TEMPLATE } from './template.js';
 import {
   bindEvents,
@@ -25,7 +25,7 @@ import {
   handleResize,
 } from './events/index.js';
 
-export { SAFE_MAX_HEIGHT, VirtualScrollRegistry };
+export { SAFE_MAX_HEIGHT, SAFE_MAX_SPACER_SIZE, VirtualScrollRegistry };
 
 /**
  * The `<runway-grid>` custom element. See the module doc for an overview.
@@ -44,6 +44,10 @@ export { SAFE_MAX_HEIGHT, VirtualScrollRegistry };
  *   implement a fallback (e.g. rendering a plain, non-virtualized list instead).
  */
 export class RunwayGrid extends HTMLElement {
+  static get observedAttributes() {
+    return ['orientation', 'row-size', 'col-size', 'buffer-size'];
+  }
+
   constructor() {
     super();
     this.attachShadow({ mode: 'open' });
@@ -62,14 +66,20 @@ export class RunwayGrid extends HTMLElement {
     this.horizontalTrack = this.shadowRoot.querySelector('.runway-grid__track--horizontal');
     /** @type {HTMLElement} */
     this.horizontalSpacer = this.shadowRoot.querySelector('.runway-grid__spacer--horizontal');
+    /** @type {HTMLElement} */
+    this.bottomBar = this.shadowRoot.querySelector('.runway-grid__bottom-bar');
+    /** @type {HTMLElement} */
+    this.corner = this.shadowRoot.querySelector('.runway-grid__corner');
 
     // Internal State
     this.rows = [];
     this.columnsData = null;
     this._colCount = 1;
+    this._hasExplicitColumns = false;
     this.renderedNodes = []; // 2D matrix
     this.renderedRowGroups = []; // one wrapper element per rendered row, grouping its cells for ARIA/positioning
     this.registry = null;
+    this._renderVersion = 0;
 
     // The wrapper is a purely structural positioning container between the viewport
     // (role="grid"/"list") and the row groups/cells (role="row"/"gridcell" or "listitem") -
@@ -81,9 +91,13 @@ export class RunwayGrid extends HTMLElement {
     this._initialLayoutDone = false;
     this._isUpdatingDOM = false;
     this._isProgrammaticScroll = false;
-    this._scrollMuteTimer = null;
+    this._programmaticScrollRaf = null;
+    this._expectedTrackScrollTop = null;
+    this._expectedTrackScrollLeft = null;
     this._isDraggingVertical = false;
     this._isDraggingHorizontal = false;
+    this._trackCache = { vertical: null, horizontal: null };
+    this._viewportSizeCache = { width: null, height: null };
 
     this._virtualScrollTop = 0;
     this._virtualScrollLeft = 0;
@@ -117,11 +131,63 @@ export class RunwayGrid extends HTMLElement {
     this._batchDepth = 0;
     this._pendingRangeChangeEvent = null;
 
+    this._updateCornerVisibility();
     this._bindEvents();
     this.initWasm();
   }
 
   // --- COMPONENT LIFECYCLE & SETUP ---
+
+  /**
+   * Custom element attribute lifecycle callback: reacts to dynamic runtime changes
+   * to `orientation`, `row-size`, `col-size`, and `buffer-size`.
+   *
+   * @param {string} name
+   * @param {string|null} oldValue
+   * @param {string|null} newValue
+   */
+  attributeChangedCallback(name, oldValue, newValue) {
+    if (oldValue === newValue) return;
+    this._invalidateLayoutCache();
+    if (!this.verticalTrack || !this.horizontalTrack) return;
+
+    if (name === 'orientation') {
+      this.verticalTrack.classList.toggle('runway-grid__track--disabled', !this.verticalEnabled);
+      this.horizontalTrack.classList.toggle('runway-grid__track--disabled', !this.horizontalEnabled);
+      this._updateCornerVisibility();
+      if (this.orientation === 'horizontal' && !this._hasExplicitColumns && this.rows && this.rows.length) {
+        this.columnsData = this.rows;
+        this._colCount = this.rows.length;
+      }
+      if (!this.verticalEnabled) {
+        this._virtualScrollTop = 0;
+        if (this.verticalTrack) this.verticalTrack.scrollTop = 0;
+      }
+      if (!this.horizontalEnabled) {
+        this._virtualScrollLeft = 0;
+        if (this.horizontalTrack) this.horizontalTrack.scrollLeft = 0;
+      }
+      this.setupRegistry();
+    } else if (name === 'row-size' || name === 'col-size') {
+      this.setupRegistry();
+    } else if (name === 'buffer-size') {
+      this.calculateIndices();
+    }
+  }
+
+  /**
+   * Synchronizes the visibility of the bottom bar container and the corner element
+   * based on the active orientation.
+   * @private
+   */
+  _updateCornerVisibility() {
+    if (this.bottomBar) {
+      this.bottomBar.style.display = this.horizontalEnabled ? 'flex' : 'none';
+    }
+    if (this.corner) {
+      this.corner.classList.toggle('runway-grid__corner--visible', this.orientation === 'both');
+    }
+  }
 
   /**
    * Wires up all DOM/`ResizeObserver` event listeners used by the component.
@@ -134,29 +200,69 @@ export class RunwayGrid extends HTMLElement {
 
   /**
    * Custom element lifecycle callback: removes the window-level `mouseup`
-   * listener registered in {@link RunwayGrid#_bindEvents} and arrests any
-   * running momentum animation to avoid leaking once removed from the DOM.
+   * listener, disconnects observers, frees WASM resources, and arrests any
+   * running momentum animation or drag states to avoid leaking once removed from the DOM.
    */
   disconnectedCallback() {
     this._stopMomentum();
     this._detachTouchTargetListeners();
-    window.removeEventListener('mouseup', this._handleMouseUp);
+    this._isTouchScrolling = false;
+    this._activeTouchId = null;
+    this._touchHistory = [];
+    this._isDraggingVertical = false;
+    this._isDraggingHorizontal = false;
+    if (this._programmaticScrollRaf !== null) {
+      cancelAnimationFrame(this._programmaticScrollRaf);
+      this._programmaticScrollRaf = null;
+    }
+    this._isProgrammaticScroll = false;
+    this._expectedTrackScrollTop = null;
+    this._expectedTrackScrollLeft = null;
+    this._invalidateLayoutCache();
+    if (this._handleMouseUp) {
+      window.removeEventListener('mouseup', this._handleMouseUp);
+    }
+    if (this.resizeObserver) {
+      this.resizeObserver.disconnect();
+    }
+    if (this.containerObserver) {
+      this.containerObserver.disconnect();
+    }
+    if (this.registry) {
+      this.registry.free();
+      this.registry = null;
+    }
   }
 
   /**
    * Custom element lifecycle callback: resets scroll position and track state,
+   * binds the window-level `mouseup` listener, reconnects observers,
    * toggles the enabled/disabled state of each scrollbar track based on
-   * {@link RunwayGrid#orientation}, and triggers the initial layout pass.
+   * {@link RunwayGrid#orientation}, restores the WASM registry if needed,
+   * and triggers the layout pass.
    */
   connectedCallback() {
+    this._invalidateLayoutCache();
     this._stopMomentum();
+    if (this._handleMouseUp) {
+      window.removeEventListener('mouseup', this._handleMouseUp);
+      window.addEventListener('mouseup', this._handleMouseUp);
+    }
+    if (this.containerObserver) {
+      this.containerObserver.observe(this);
+    }
     if (this.verticalTrack) this.verticalTrack.scrollTop = 0;
     if (this.horizontalTrack) this.horizontalTrack.scrollLeft = 0;
     this._virtualScrollTop = 0;
     this._virtualScrollLeft = 0;
     this.verticalTrack.classList.toggle('runway-grid__track--disabled', !this.verticalEnabled);
     this.horizontalTrack.classList.toggle('runway-grid__track--disabled', !this.horizontalEnabled);
-    this.calculateIndices();
+    this._updateCornerVisibility();
+    if (this.wasmInitialized && !this.registry) {
+      this.setupRegistry();
+    } else {
+      this.calculateIndices();
+    }
   }
 
   /**
@@ -182,7 +288,7 @@ export class RunwayGrid extends HTMLElement {
       return;
     }
     this.wasmInitialized = true;
-    if (this.rows.length || this._colCount > 1) this.setupRegistry();
+    if (this.rows.length || this._colCount > 1 || (this.orientation === 'horizontal' && this.colCount > 0)) this.setupRegistry();
   }
 
   /**
@@ -193,9 +299,28 @@ export class RunwayGrid extends HTMLElement {
    */
   setupRegistry() {
     if (!this.wasmInitialized) return;
-    if (this.verticalEnabled && this.rowCount === 0) return;
-    if (this.horizontalEnabled && this.colCount === 0) return;
+    this._invalidateLayoutCache();
 
+    if (this.registry) {
+      this.registry.free();
+      this.registry = null;
+    }
+
+    if ((this.verticalEnabled && this.rowCount === 0) || (this.horizontalEnabled && this.colCount === 0)) {
+      while (this.renderedNodes.length > 0) {
+        const rowNodes = this.renderedNodes.pop();
+        if (this.resizeObserver) {
+          for (const el of rowNodes) this.resizeObserver.unobserve(el);
+        }
+      }
+      while (this.renderedRowGroups.length > 0) {
+        this.wrapper.removeChild(this.renderedRowGroups.pop());
+      }
+      this.updateSpacer();
+      return;
+    }
+
+    this._renderVersion++;
     this.registry = new VirtualScrollRegistry(this.rowCount || 1, this.colCount || 1, this.rowSize, this.colSize);
     this._applyContainerAria();
     this.updateSpacer();
@@ -295,9 +420,10 @@ export class RunwayGrid extends HTMLElement {
     if (!this.registry) return false;
 
     let moved = false;
+    const { width: vw, height: vh } = this._getViewportSize();
 
     if (this.verticalEnabled && deltaY !== 0) {
-      const maxScroll = this.registry.get_total_height() - this.viewport.clientHeight;
+      const maxScroll = this.registry.get_total_height() - vh;
       if (maxScroll > 0) {
         const before = this._virtualScrollTop;
         const after = this._clamp(before + deltaY, 0, maxScroll);
@@ -309,7 +435,7 @@ export class RunwayGrid extends HTMLElement {
     }
 
     if (this.horizontalEnabled && deltaX !== 0) {
-      const maxScroll = this.registry.get_total_width() - this.viewport.clientWidth;
+      const maxScroll = this.registry.get_total_width() - vw;
       if (maxScroll > 0) {
         const before = this._virtualScrollLeft;
         const after = this._clamp(before + deltaX, 0, maxScroll);
@@ -324,7 +450,7 @@ export class RunwayGrid extends HTMLElement {
       this._beginRangeChangeBatch();
       try {
         this.calculateIndices();
-        this._settleAtEnd(this.viewport.clientHeight, this.viewport.clientWidth);
+        this._settleAtEnd(vh, vw);
         this.syncTrackFromVirtual();
       } finally {
         this._endRangeChangeBatch();
@@ -444,6 +570,35 @@ export class RunwayGrid extends HTMLElement {
   // --- CORE LOGIC & MATH ---
 
   /**
+   * Returns cached client dimensions of the viewport (`clientWidth` / `clientHeight`),
+   * querying the DOM lazily and caching until invalidated by resize/reconnection.
+   * Eliminates synchronous layout reflow thrashing during active scrolling gestures.
+   *
+   * @returns {{width: number, height: number}} Viewport width and height in CSS pixels.
+   */
+  _getViewportSize() {
+    let { width, height } = this._viewportSizeCache;
+    if (width === null || height === null || (width === 0 && height === 0)) {
+      width = this.viewport ? this.viewport.clientWidth : 0;
+      height = this.viewport ? this.viewport.clientHeight : 0;
+      if (width > 0 || height > 0) {
+        this._viewportSizeCache.width = width;
+        this._viewportSizeCache.height = height;
+      }
+    }
+    return { width, height };
+  }
+
+  /**
+   * Invalidates cached layout queries (viewport client dimensions and scrollbar track extents).
+   * Called on resize, container resize, spacer updates, and reconnection.
+   */
+  _invalidateLayoutCache() {
+    this._trackCache = { vertical: null, horizontal: null };
+    this._viewportSizeCache = { width: null, height: null };
+  }
+
+  /**
    * Clamps `value` to the `[min, max]` range, snapping to the boundary whenever
    * `value` is already within 1px of it (so near-boundary floating point noise
    * settles exactly at the boundary instead of leaving a residual gap).
@@ -462,6 +617,7 @@ export class RunwayGrid extends HTMLElement {
   /**
    * Resolves the DOM/registry properties relevant to a given axis, so the
    * scroll-conversion helpers below can stay axis-agnostic.
+   * Caches track extents to avoid synchronous layout reflow queries during scrolling.
    *
    * @param {'vertical'|'horizontal'} axis Axis to resolve.
    * @returns {{track: HTMLElement, trackExtent: number, trackClientExtent: number, totalExtent: number}}
@@ -469,16 +625,46 @@ export class RunwayGrid extends HTMLElement {
    *   its visible client extent, and the total virtual extent for that axis.
    */
   _axis(axis) {
-    return axis === 'vertical' ? {
-      track: this.verticalTrack,
-      trackExtent: this.verticalTrack.scrollHeight,
-      trackClientExtent: this.verticalTrack.clientHeight,
-      totalExtent: this.registry.get_total_height(),
-    } : {
+    if (axis === 'vertical') {
+      if (!this._trackCache.vertical) {
+        const trackExtent = this.verticalTrack ? this.verticalTrack.scrollHeight : 0;
+        const trackClientExtent = this.verticalTrack ? this.verticalTrack.clientHeight : 0;
+        if (trackExtent > 0 || trackClientExtent > 0) {
+          this._trackCache.vertical = { trackExtent, trackClientExtent };
+        }
+        return {
+          track: this.verticalTrack,
+          trackExtent,
+          trackClientExtent,
+          totalExtent: this.registry ? this.registry.get_total_height() : 0,
+        };
+      }
+      return {
+        track: this.verticalTrack,
+        trackExtent: this._trackCache.vertical.trackExtent,
+        trackClientExtent: this._trackCache.vertical.trackClientExtent,
+        totalExtent: this.registry ? this.registry.get_total_height() : 0,
+      };
+    }
+
+    if (!this._trackCache.horizontal) {
+      const trackExtent = this.horizontalTrack ? this.horizontalTrack.scrollWidth : 0;
+      const trackClientExtent = this.horizontalTrack ? this.horizontalTrack.clientWidth : 0;
+      if (trackExtent > 0 || trackClientExtent > 0) {
+        this._trackCache.horizontal = { trackExtent, trackClientExtent };
+      }
+      return {
+        track: this.horizontalTrack,
+        trackExtent,
+        trackClientExtent,
+        totalExtent: this.registry ? this.registry.get_total_width() : 0,
+      };
+    }
+    return {
       track: this.horizontalTrack,
-      trackExtent: this.horizontalTrack.scrollWidth,
-      trackClientExtent: this.horizontalTrack.clientWidth,
-      totalExtent: this.registry.get_total_width(),
+      trackExtent: this._trackCache.horizontal.trackExtent,
+      trackClientExtent: this._trackCache.horizontal.trackClientExtent,
+      totalExtent: this.registry ? this.registry.get_total_width() : 0,
     };
   }
 
@@ -529,11 +715,12 @@ export class RunwayGrid extends HTMLElement {
    */
   syncTrackFromVirtual() {
     if (!this.registry) return;
+    const { width: vw, height: vh } = this._getViewportSize();
     if (this.verticalEnabled && !this._isUpdatingDOM && !this._isDraggingVertical) {
-      this._syncOneTrack('vertical', this._virtualScrollTop, this.viewport.clientHeight, this.verticalTrack, 'scrollTop');
+      this._syncOneTrack('vertical', this._virtualScrollTop, vh, this.verticalTrack, 'scrollTop');
     }
     if (this.horizontalEnabled && !this._isUpdatingDOM && !this._isDraggingHorizontal) {
-      this._syncOneTrack('horizontal', this._virtualScrollLeft, this.viewport.clientWidth, this.horizontalTrack, 'scrollLeft');
+      this._syncOneTrack('horizontal', this._virtualScrollLeft, vw, this.horizontalTrack, 'scrollLeft');
     }
   }
 
@@ -553,29 +740,47 @@ export class RunwayGrid extends HTMLElement {
     if (targetScrollPos === 0 && trackEl[scrollProp] === 0) return;
 
     if (Math.abs(trackEl[scrollProp] - targetScrollPos) >= 1) {
+      if (axis === 'vertical') {
+        this._expectedTrackScrollTop = targetScrollPos;
+      } else {
+        this._expectedTrackScrollLeft = targetScrollPos;
+      }
       this._isProgrammaticScroll = true;
       this._isUpdatingDOM = true;
       trackEl[scrollProp] = targetScrollPos;
       this._isUpdatingDOM = false;
 
-      clearTimeout(this._scrollMuteTimer);
-      this._scrollMuteTimer = setTimeout(() => { this._isProgrammaticScroll = false; }, 40);
+      if (this._programmaticScrollRaf !== null) {
+        cancelAnimationFrame(this._programmaticScrollRaf);
+      }
+      this._programmaticScrollRaf = requestAnimationFrame(() => {
+        this._isProgrammaticScroll = false;
+        this._expectedTrackScrollTop = null;
+        this._expectedTrackScrollLeft = null;
+        this._programmaticScrollRaf = null;
+      });
     }
   }
 
   /**
    * Resizes the vertical/horizontal spacer elements so each scrollbar track's
    * native scrollable extent matches the total virtual content size (capped at
-   * {@link SAFE_MAX_HEIGHT}), which is what gives the native scrollbars their
+   * {@link SAFE_MAX_SPACER_SIZE}), which is what gives the native scrollbars their
    * correct thumb size/travel range. Skipped on an axis currently being dragged.
    */
   updateSpacer() {
-    if (!this.registry) return;
+    this._trackCache.vertical = null;
+    this._trackCache.horizontal = null;
+    if (!this.registry) {
+      if (this.verticalSpacer) this.verticalSpacer.style.height = '0px';
+      if (this.horizontalSpacer) this.horizontalSpacer.style.width = '0px';
+      return;
+    }
     if (this.verticalEnabled && !this._isDraggingVertical) {
-      this.verticalSpacer.style.height = `${Math.floor(Math.min(this.registry.get_total_height(), SAFE_MAX_HEIGHT))}px`;
+      this.verticalSpacer.style.height = `${Math.floor(Math.min(this.registry.get_total_height(), SAFE_MAX_SPACER_SIZE))}px`;
     }
     if (this.horizontalEnabled && !this._isDraggingHorizontal) {
-      this.horizontalSpacer.style.width = `${Math.floor(Math.min(this.registry.get_total_width(), SAFE_MAX_HEIGHT))}px`;
+      this.horizontalSpacer.style.width = `${Math.floor(Math.min(this.registry.get_total_width(), SAFE_MAX_SPACER_SIZE))}px`;
     }
   }
 
@@ -591,14 +796,15 @@ export class RunwayGrid extends HTMLElement {
     if (this.verticalEnabled && this.rowCount === 0) return;
     if (this.horizontalEnabled && this.colCount === 0) return;
 
-    if (this.viewport.clientHeight === 0 && this.viewport.clientWidth === 0 && !this._initialLayoutDone) return;
+    const { width: vw, height: vh } = this._getViewportSize();
+    if (vh === 0 && vw === 0 && !this._initialLayoutDone) return;
     this._initialLayoutDone = true;
 
     const geometry = this.registry.compute_geometry(
         this._virtualScrollTop,
         this._virtualScrollLeft,
-        this.viewport.clientHeight,
-        this.viewport.clientWidth,
+        vh,
+        vw,
         this.bufferSize,
         this.verticalEnabled,
         this.horizontalEnabled,
@@ -664,7 +870,9 @@ export class RunwayGrid extends HTMLElement {
     try {
       while (this.renderedNodes.length > requiredRows) {
         const rowNodes = this.renderedNodes.pop();
-        for (const el of rowNodes) this.resizeObserver.unobserve(el);
+        if (this.resizeObserver) {
+          for (const el of rowNodes) this.resizeObserver.unobserve(el);
+        }
         this.wrapper.removeChild(this.renderedRowGroups.pop());
       }
       while (this.renderedNodes.length < requiredRows) {
@@ -685,7 +893,9 @@ export class RunwayGrid extends HTMLElement {
         const rowNodes = this.renderedNodes[r];
         const rowGroup = this.renderedRowGroups[r];
         while (rowNodes.length > requiredCols) {
-          const el = rowNodes.pop(); this.resizeObserver.unobserve(el); rowGroup.removeChild(el);
+          const el = rowNodes.pop();
+          if (this.resizeObserver) this.resizeObserver.unobserve(el);
+          rowGroup.removeChild(el);
         }
         while (rowNodes.length < requiredCols) {
           const el = document.createElement('div');
@@ -707,8 +917,7 @@ export class RunwayGrid extends HTMLElement {
       const colBase = this.registry.get_col_offset(startCol);
       const clampedScrollTop = rowBase - translateYRaw;
       const clampedScrollLeft = colBase - translateXRaw;
-      const fullRowWidth = this.viewport.clientWidth;
-      const fullRowHeight = this.viewport.clientHeight;
+      const { width: fullRowWidth, height: fullRowHeight } = this._getViewportSize();
 
       for (let r = 0; r < requiredRows; r++) {
         const rowIndex = startRow + r;
@@ -730,11 +939,12 @@ export class RunwayGrid extends HTMLElement {
 
           const oldRow = node.getAttribute('data-row');
           const oldCol = node.getAttribute('data-col');
-          if (oldRow === String(rowIndex) && oldCol === String(colIndex)) {
-            this.resizeObserver.observe(node);
+          if (oldRow === String(rowIndex) && oldCol === String(colIndex) && node._renderedVersion === this._renderVersion) {
+            if (this.resizeObserver) this.resizeObserver.observe(node);
             continue;
           }
 
+          node._renderedVersion = this._renderVersion;
           node.setAttribute('data-row', rowIndex);
           node.setAttribute('data-col', colIndex);
           if (isGrid) {
@@ -750,11 +960,19 @@ export class RunwayGrid extends HTMLElement {
           }
           node.innerHTML = '';
 
-          const newContent = this.renderItem(this.rows[rowIndex], rowIndex, colIndex, this.rowCount, this.colCount);
-          if (typeof newContent === 'string') node.innerHTML = newContent;
-          else if (newContent) node.appendChild(newContent);
+          const item = this.orientation === 'horizontal'
+            ? (this.columnsData ? this.columnsData[colIndex] : (this.rows ? this.rows[colIndex] : undefined))
+            : (this.rows ? this.rows[rowIndex] : undefined);
+          const newContent = this.renderItem(item, rowIndex, colIndex, this.rowCount, this.colCount);
+          if (typeof newContent === 'string') {
+            node.innerHTML = newContent;
+          } else if (typeof newContent === 'number' || typeof newContent === 'boolean') {
+            node.textContent = String(newContent);
+          } else if (newContent instanceof Node) {
+            node.appendChild(newContent);
+          }
 
-          this.resizeObserver.observe(node);
+          if (this.resizeObserver) this.resizeObserver.observe(node);
         }
       }
     } catch (err) {
@@ -839,9 +1057,9 @@ export class RunwayGrid extends HTMLElement {
   scrollToCell(rowIndex, colIndex = 0) {
     if (!this.registry) return;
     this._stopMomentum();
-    const vh = this.viewport.clientHeight, vw = this.viewport.clientWidth;
-    rowIndex = this._clamp(rowIndex, 0, this.rowCount - 1);
-    colIndex = this._clamp(colIndex, 0, this.colCount - 1);
+    const { width: vw, height: vh } = this._getViewportSize();
+    rowIndex = Math.max(0, Math.min(this.rowCount - 1, Math.floor(rowIndex)));
+    colIndex = Math.max(0, Math.min(this.colCount - 1, Math.floor(colIndex)));
 
     const position = () => {
       if (this.verticalEnabled) this._virtualScrollTop = this._clamp(this.registry.get_row_offset(rowIndex), 0, this.registry.get_total_height() - vh);
@@ -874,12 +1092,18 @@ export class RunwayGrid extends HTMLElement {
   }
 
   /**
-   * Shorthand for `scrollToCell(index, 0)`, for single-axis (vertical or
-   * horizontal) lists.
+   * Shorthand for `scrollToCell(index, 0)` (vertical) or `scrollToCell(0, index)`
+   * (horizontal), for single-axis lists.
    *
    * @param {number} index Zero-based row (vertical) or column (horizontal) index to scroll to.
    */
-  scrollToIndex(index) { this.scrollToCell(index, 0); }
+  scrollToIndex(index) {
+    if (this.orientation === 'horizontal') {
+      this.scrollToCell(0, index);
+    } else {
+      this.scrollToCell(index, 0);
+    }
+  }
 
   // --- PROPERTIES ---
 
@@ -889,6 +1113,10 @@ export class RunwayGrid extends HTMLElement {
    * @returns {'vertical'|'horizontal'|'both'}
    */
   get orientation() { const v = this.getAttribute('orientation'); return v === 'horizontal' || v === 'both' ? v : 'vertical'; }
+  set orientation(val) {
+    if (val) this.setAttribute('orientation', val);
+    else this.removeAttribute('orientation');
+  }
 
   /** @returns {boolean} Whether the vertical (row) axis is virtualized. */
   get verticalEnabled() { return this.orientation === 'vertical' || this.orientation === 'both'; }
@@ -900,27 +1128,53 @@ export class RunwayGrid extends HTMLElement {
   get rowCount() { return this.verticalEnabled ? (this.rows ? this.rows.length : 0) : 1; }
 
   /** @returns {number} Number of columns currently known to the component (`1` when the horizontal axis is disabled). */
-  get colCount() { return this.horizontalEnabled ? (this._colCount || 1) : 1; }
+  get colCount() {
+    if (!this.horizontalEnabled) return 1;
+    if (this.orientation === 'horizontal' && !this._hasExplicitColumns) {
+      return this.rows ? this.rows.length : 0;
+    }
+    if (this.columnsData) {
+      return this.columnsData.length;
+    }
+    return this._colCount || 0;
+  }
 
   /** @returns {number} Initial/estimated row height in pixels, from the `row-size` (or legacy `item-size`) attribute. */
   get rowSize() { return parseInt(this.getAttribute('row-size') || this.getAttribute('item-size') || '20', 10); }
+  set rowSize(val) { this.setAttribute('row-size', String(val)); }
 
   /** @returns {number} Initial/estimated column width in pixels, from the `col-size` attribute. */
   get colSize() { return parseInt(this.getAttribute('col-size') || '100', 10); }
+  set colSize(val) { this.setAttribute('col-size', String(val)); }
 
   /** @returns {number} Number of extra rows/columns rendered outside the visible viewport, from the `buffer-size` attribute. */
   get bufferSize() { return parseInt(this.getAttribute('buffer-size') || '5', 10); }
+  set bufferSize(val) { this.setAttribute('buffer-size', String(val)); }
+
+  /**
+   * The row data array.
+   * @returns {Array<unknown>}
+   */
+  get data() {
+    return this.rows;
+  }
 
   /**
    * Sets the row data. (Re)builds the internal layout registry and resets the
-   * scroll position back to the origin.
+   * scroll position back to the origin. For single-axis horizontal lists, automatically
+   * populates columns if `columns` was omitted.
    * @param {Array<unknown>} newRows The row data array.
    */
   set data(newRows) {
     this._stopMomentum();
     this._isTouchScrolling = false;
     this._detachTouchTargetListeners();
+    this._renderVersion++;
     this.rows = newRows || [];
+    if (this.orientation === 'horizontal' && !this._hasExplicitColumns) {
+      this.columnsData = Array.isArray(newRows) ? newRows : null;
+      this._colCount = this.columnsData ? this.columnsData.length : 1;
+    }
     this._virtualScrollTop = 0;
     this._virtualScrollLeft = 0;
     this.setupRegistry();
@@ -939,6 +1193,9 @@ export class RunwayGrid extends HTMLElement {
     if (this.orientation === 'horizontal') {
       this.columnsData = (this.columnsData || []).concat(newItems);
       this._colCount = this.columnsData.length;
+      if (!this._hasExplicitColumns) {
+        this.rows = this.columnsData;
+      }
 
       if (!this.registry) { this.setupRegistry(); return; }
 
@@ -965,6 +1222,7 @@ export class RunwayGrid extends HTMLElement {
    */
   removeDataFromHead(count) {
     if (!count || count <= 0 || !this.registry) return;
+    this._renderVersion++;
 
     if (this.orientation === 'horizontal') {
       const removeCount = Math.min(count, this.columnsData ? this.columnsData.length : 0);
@@ -972,6 +1230,9 @@ export class RunwayGrid extends HTMLElement {
 
       this.columnsData = this.columnsData.slice(removeCount);
       this._colCount = this.columnsData.length;
+      if (!this._hasExplicitColumns) {
+        this.rows = this.columnsData;
+      }
 
       const widthDelta = this.registry.remove_cols_from_head(removeCount);
       this._virtualScrollLeft = Math.max(0, this._virtualScrollLeft - widthDelta);
@@ -992,25 +1253,44 @@ export class RunwayGrid extends HTMLElement {
   }
 
   /**
-   * Sets the column definitions, or a plain column count. Must be set before
-   * `data` when using `orientation="horizontal"` or `orientation="both"`.
+   * The column definitions array, or a numeric column count if definitions were not provided.
+   * @returns {Array<unknown>|number}
+   */
+  get columns() {
+    return this.columnsData ?? this._colCount;
+  }
+
+  /**
+   * Sets the column definitions, or a plain column count. (Re)builds the internal
+   * layout registry and triggers a re-render.
    * @param {Array<unknown>|number} colsOrCount An array of column definitions, or a column count.
    */
   set columns(colsOrCount) {
     this._stopMomentum();
     this._isTouchScrolling = false;
     this._detachTouchTargetListeners();
-    if (Array.isArray(colsOrCount)) { this.columnsData = colsOrCount; this._colCount = colsOrCount.length || 1; }
-    else { this.columnsData = null; this._colCount = parseInt(String(colsOrCount), 10) || 1; }
+    this._hasExplicitColumns = colsOrCount != null;
+    this._renderVersion++;
+    if (Array.isArray(colsOrCount)) {
+      this.columnsData = colsOrCount;
+      this._colCount = colsOrCount.length || 1;
+    } else if (colsOrCount != null) {
+      this.columnsData = null;
+      this._colCount = parseInt(String(colsOrCount), 10) || 1;
+    } else {
+      this.columnsData = null;
+      this._colCount = 1;
+    }
+    this.setupRegistry();
   }
 
   /**
    * Sets the cell rendering function, then immediately re-renders.
    *
-   * @param {(rowItem: unknown, rowIndex: number, colIndex: number, rowCount: number, colCount: number) => (string|Node|null|undefined)} renderFn
-   *   Renders a single cell's content: return an HTML string (assigned via `innerHTML`) or a `Node` (appended as-is).
+   * @param {(rowItem: unknown, rowIndex: number, colIndex: number, rowCount: number, colCount: number) => (string|Node|number|boolean|null|undefined)} renderFn
+   *   Renders a single cell's content: return an HTML string (assigned via `innerHTML`), a `Node` (appended as-is), or a primitive number/boolean (assigned via `textContent`).
    */
-  set template(renderFn) { this.renderItem = renderFn; this.calculateIndices(); }
+  set template(renderFn) { this._renderVersion++; this.renderItem = renderFn; this.calculateIndices(); }
 }
 
 if (!customElements.get('runway-grid')) {

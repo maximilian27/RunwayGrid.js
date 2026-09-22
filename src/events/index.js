@@ -39,7 +39,6 @@ export {
  */
 export function bindEvents(grid) {
   grid._handleMouseUp = () => grid._onMouseUp();
-  window.addEventListener('mouseup', grid._handleMouseUp);
 
   grid.verticalTrack.addEventListener('mousedown', () => { grid._isDraggingVertical = true; });
   grid.horizontalTrack.addEventListener('mousedown', () => { grid._isDraggingHorizontal = true; });
@@ -60,7 +59,8 @@ export function bindEvents(grid) {
 
   grid.resizeObserver = new ResizeObserver((entries) => grid._onResize(entries));
   grid.containerObserver = new ResizeObserver(() => {
-    if (grid.viewport.clientHeight > 0 || grid.viewport.clientWidth > 0) grid.calculateIndices();
+    if (grid._invalidateLayoutCache) grid._invalidateLayoutCache();
+    const { width: vw, height: vh } = grid._getViewportSize ? grid._getViewportSize() : { width: grid.viewport.clientWidth, height: grid.viewport.clientHeight };
+    if (vh > 0 || vw > 0) grid.calculateIndices();
   });
-  grid.containerObserver.observe(grid);
 }

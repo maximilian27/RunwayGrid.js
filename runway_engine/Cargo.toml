@@ -1,7 +1,7 @@
 [package]
 name = "runway_engine"
-version = "1.0.0-rc1"
-edition = "2021"
+version = "1.0.0-rc2"
+edition = "2024"
 authors = ["Maximilian Both <maximilian.both27@outlook.com>"]
 
 [lib]
