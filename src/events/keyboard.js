@@ -18,8 +18,9 @@ export function handleKeyDown(grid, e) {
   grid._stopMomentum();
 
   if (!grid.registry) return;
-  const maxV = grid.registry.get_total_height() - grid.viewport.clientHeight;
-  const maxH = grid.registry.get_total_width() - grid.viewport.clientWidth;
+  const { width: vw, height: vh } = grid._getViewportSize ? grid._getViewportSize() : { width: grid.viewport.clientWidth, height: grid.viewport.clientHeight };
+  const maxV = grid.registry.get_total_height() - vh;
+  const maxH = grid.registry.get_total_width() - vw;
   let changed = true;
 
   switch (e.key) {
@@ -27,8 +28,28 @@ export function handleKeyDown(grid, e) {
     case 'ArrowUp': if (!grid.verticalEnabled) { changed = false; break; } e.preventDefault(); grid._virtualScrollTop -= grid.rowSize; break;
     case 'ArrowRight': if (!grid.horizontalEnabled) { changed = false; break; } e.preventDefault(); grid._virtualScrollLeft += grid.colSize; break;
     case 'ArrowLeft': if (!grid.horizontalEnabled) { changed = false; break; } e.preventDefault(); grid._virtualScrollLeft -= grid.colSize; break;
-    case 'PageDown': if (!grid.verticalEnabled) { changed = false; break; } e.preventDefault(); grid._virtualScrollTop += grid.viewport.clientHeight; break;
-    case 'PageUp': if (!grid.verticalEnabled) { changed = false; break; } e.preventDefault(); grid._virtualScrollTop -= grid.viewport.clientHeight; break;
+    case 'PageDown':
+      if (grid.verticalEnabled) {
+        e.preventDefault();
+        grid._virtualScrollTop += vh;
+      } else if (grid.horizontalEnabled) {
+        e.preventDefault();
+        grid._virtualScrollLeft += vw;
+      } else {
+        changed = false;
+      }
+      break;
+    case 'PageUp':
+      if (grid.verticalEnabled) {
+        e.preventDefault();
+        grid._virtualScrollTop -= vh;
+      } else if (grid.horizontalEnabled) {
+        e.preventDefault();
+        grid._virtualScrollLeft -= vw;
+      } else {
+        changed = false;
+      }
+      break;
     case 'Home': e.preventDefault(); if (grid.verticalEnabled) grid._virtualScrollTop = 0; if (grid.horizontalEnabled) grid._virtualScrollLeft = 0; break;
     case 'End': e.preventDefault(); if (grid.verticalEnabled) grid._virtualScrollTop = maxV; if (grid.horizontalEnabled) grid._virtualScrollLeft = maxH; break;
     default: changed = false; break;
@@ -40,7 +61,7 @@ export function handleKeyDown(grid, e) {
     grid._beginRangeChangeBatch();
     try {
       grid.calculateIndices();
-      grid._settleAtEnd(grid.viewport.clientHeight, grid.viewport.clientWidth);
+      grid._settleAtEnd(vh, vw);
       grid.syncTrackFromVirtual();
     } finally {
       grid._endRangeChangeBatch();

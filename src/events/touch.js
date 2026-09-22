@@ -247,13 +247,15 @@ export function startMomentum(grid, vx, vy) {
       grid._scrollByDelta(dx, dy);
 
       if (grid.verticalEnabled && Math.abs(vy) > 0.01) {
-        const maxV = grid.registry ? grid.registry.get_total_height() - grid.viewport.clientHeight : 0;
+        const { height: vh } = grid._getViewportSize ? grid._getViewportSize() : { height: grid.viewport.clientHeight };
+        const maxV = grid.registry ? grid.registry.get_total_height() - vh : 0;
         if (grid._virtualScrollTop <= 0 || grid._virtualScrollTop >= maxV) {
           vy = 0;
         }
       }
       if (grid.horizontalEnabled && Math.abs(dx) > 0.01) {
-        const maxH = grid.registry ? grid.registry.get_total_width() - grid.viewport.clientWidth : 0;
+        const { width: vw } = grid._getViewportSize ? grid._getViewportSize() : { width: grid.viewport.clientWidth };
+        const maxH = grid.registry ? grid.registry.get_total_width() - vw : 0;
         if (grid._virtualScrollLeft <= 0 || grid._virtualScrollLeft >= maxH) {
           vx = 0;
         }

@@ -20,21 +20,34 @@ export function handleWheel(grid, e) {
   if (!grid.registry) return;
   grid._stopMomentum();
 
+  let deltaX = e.deltaX;
+  let deltaY = e.deltaY;
+
+  const { width: vw, height: vh } = grid._getViewportSize ? grid._getViewportSize() : { width: grid.viewport.clientWidth, height: grid.viewport.clientHeight };
+
+  if (e.deltaMode === 1) {
+    deltaX *= 16;
+    deltaY *= 16;
+  } else if (e.deltaMode === 2) {
+    deltaX *= vw;
+    deltaY *= vh;
+  }
+
   let hasRoom = false;
 
-  if (grid.verticalEnabled && e.deltaY !== 0) {
-    const maxScroll = grid.registry.get_total_height() - grid.viewport.clientHeight;
+  if (grid.verticalEnabled && deltaY !== 0) {
+    const maxScroll = grid.registry.get_total_height() - vh;
     if (maxScroll > 0) {
       const before = grid._virtualScrollTop;
-      if ((e.deltaY < 0 && before > 0) || (e.deltaY > 0 && before < maxScroll)) hasRoom = true;
+      if ((deltaY < 0 && before > 0) || (deltaY > 0 && before < maxScroll)) hasRoom = true;
     }
   }
 
-  if (grid.horizontalEnabled && e.deltaX !== 0) {
-    const maxScroll = grid.registry.get_total_width() - grid.viewport.clientWidth;
+  if (grid.horizontalEnabled && deltaX !== 0) {
+    const maxScroll = grid.registry.get_total_width() - vw;
     if (maxScroll > 0) {
       const before = grid._virtualScrollLeft;
-      if ((e.deltaX < 0 && before > 0) || (e.deltaX > 0 && before < maxScroll)) hasRoom = true;
+      if ((deltaX < 0 && before > 0) || (deltaX > 0 && before < maxScroll)) hasRoom = true;
     }
   }
 
@@ -42,5 +55,5 @@ export function handleWheel(grid, e) {
   // let it propagate so an enclosing scroll container (e.g. the page itself) keeps scrolling.
   if (hasRoom) e.preventDefault();
 
-  grid._scrollByDelta(e.deltaX * 0.3, e.deltaY * 0.3);
+  grid._scrollByDelta(deltaX, deltaY);
 }

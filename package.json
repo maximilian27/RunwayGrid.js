@@ -1,6 +1,6 @@
 {
   "name": "runway-grid",
-  "version": "1.0.0-rc1",
+  "version": "1.0.0-rc2",
   "description": "High-performance virtual scroll custom element (list & 2D grid) backed by a Rust/WASM layout engine",
   "license": "Apache-2.0",
   "author": {

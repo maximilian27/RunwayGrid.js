@@ -4,11 +4,11 @@ use std::cmp::Ordering;
 // Builds a cumulative (prefix) sum vector for a dimension (rows or columns), all starting
 // at the same default size. Kept as a free function so it can be reused for both axes.
 fn build_prefix_sums(default_size: f64, count: usize) -> Vec<f64> {
-    let mut prefix_sums = vec![0.0; count];
+    let mut prefix_sums = Vec::with_capacity(count);
     let mut running_sum = 0.0;
-    for i in 0..count {
+    for _ in 0..count {
         running_sum += default_size;
-        prefix_sums[i] = running_sum;
+        prefix_sums.push(running_sum);
     }
     prefix_sums
 }
@@ -45,8 +45,7 @@ fn update_size(sizes: &mut [f64], prefix_sums: &mut [f64], index: usize, new_siz
     sizes[index] = new_size;
 
     // Rust slice optimization: Sequential memory mutation loops are auto-vectorized by LLVM.
-    let len = prefix_sums.len();
-    let chunk = &mut prefix_sums[index..len];
+    let chunk = &mut prefix_sums[index..];
     for val in chunk.iter_mut() {
         *val += delta;
     }
@@ -193,9 +192,11 @@ impl VirtualScrollRegistry {
         self.row_heights.drain(0..count);
         self.row_prefix_sums.drain(0..count);
 
-        // Rust slice optimization: Sequential memory mutation loops are auto-vectorized by LLVM.
-        for val in self.row_prefix_sums.iter_mut() {
-            *val -= height_delta;
+        if height_delta.abs() > 1e-9 {
+            // Rust slice optimization: Sequential memory mutation loops are auto-vectorized by LLVM.
+            for val in self.row_prefix_sums.iter_mut() {
+                *val -= height_delta;
+            }
         }
 
         height_delta
@@ -239,9 +240,11 @@ impl VirtualScrollRegistry {
         self.col_widths.drain(0..count);
         self.col_prefix_sums.drain(0..count);
 
-        // Rust slice optimization: Sequential memory mutation loops are auto-vectorized by LLVM.
-        for val in self.col_prefix_sums.iter_mut() {
-            *val -= width_delta;
+        if width_delta.abs() > 1e-9 {
+            // Rust slice optimization: Sequential memory mutation loops are auto-vectorized by LLVM.
+            for val in self.col_prefix_sums.iter_mut() {
+                *val -= width_delta;
+            }
         }
 
         width_delta

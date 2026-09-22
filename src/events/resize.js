@@ -15,9 +15,9 @@
  */
 export function handleResize(grid, entries) {
   if (!grid.registry || grid._isUpdatingDOM) return;
+  if (grid._invalidateLayoutCache) grid._invalidateLayoutCache();
 
-  const vh = grid.viewport.clientHeight;
-  const vw = grid.viewport.clientWidth;
+  const { width: vw, height: vh } = grid._getViewportSize ? grid._getViewportSize() : { width: grid.viewport.clientWidth, height: grid.viewport.clientHeight };
   const wasAtVEnd = grid.verticalEnabled && Math.abs(grid._virtualScrollTop - (grid.registry.get_total_height() - vh)) < 1;
   const wasAtHEnd = grid.horizontalEnabled && Math.abs(grid._virtualScrollLeft - (grid.registry.get_total_width() - vw)) < 1;
 

@@ -26,13 +26,26 @@ export const RUNWAY_GRID_STYLES = `
     width: var(--runway-grid-scrollbar-size, 10px);
    }
   .runway-grid__spacer--vertical { width: 1px; will-change: height; }
+  .runway-grid__bottom-bar { display: flex; flex-direction: row; width: 100%; flex-shrink: 0; }
+  .runway-grid__bottom-bar--disabled { display: none; }
   .runway-grid__track--horizontal {
-    flex-shrink: 0;
+    flex: 1;
+    min-width: 0;
     height: var(--runway-grid-scrollbar-size, 10px);
     overflow-x: scroll; 
     overflow-y: hidden; 
     scrollbar-width: thin;
   }
   .runway-grid__spacer--horizontal { height: 1px; will-change: width; }
+  .runway-grid__corner {
+    display: none;
+    flex-shrink: 0;
+    width: var(--runway-grid-scrollbar-size, 10px);
+    height: var(--runway-grid-scrollbar-size, 10px);
+  }
+  .runway-grid__corner--visible,
+  :host([orientation="both"]) .runway-grid__corner {
+    display: block;
+  }
   .runway-grid__track--disabled { display: none; }
 `;

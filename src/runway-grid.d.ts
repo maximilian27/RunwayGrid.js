@@ -1,4 +1,10 @@
 /**
+ * Upper bound (in pixels) applied to spacer element sizes.
+ */
+export declare const SAFE_MAX_SPACER_SIZE: number;
+export declare const SAFE_MAX_HEIGHT: number;
+
+/**
  * A single row/column range (start inclusive, end exclusive).
  */
 export interface RangeChangeCoordinates {
@@ -54,7 +60,7 @@ export interface WasmErrorEvent extends Event {
  * @param colIndex Zero-based column index of the cell being rendered.
  * @param rowCount Total number of rows currently known to the component.
  * @param colCount Total number of columns currently known to the component.
- * @returns An HTML string (assigned via `innerHTML`) or a `Node` (appended as-is).
+ * @returns An HTML string (assigned via `innerHTML`), a `Node` (appended as-is), or a primitive number/boolean (assigned via `textContent`).
  */
 export type RunwayGridTemplate = (
   rowItem: unknown,
@@ -62,7 +68,7 @@ export type RunwayGridTemplate = (
   colIndex: number,
   rowCount: number,
   colCount: number,
-) => string | Node | null | undefined;
+) => string | Node | number | boolean | null | undefined;
 
 /**
  * `<runway-grid>` - a high-performance virtual scroll custom element for
@@ -78,7 +84,7 @@ export declare class RunwayGrid extends HTMLElement {
    * One of `"vertical"` (default), `"horizontal"`, or `"both"`. Reflects the
    * `orientation` attribute and controls which axis (or both) is virtualized.
    */
-  readonly orientation: 'vertical' | 'horizontal' | 'both';
+  orientation: 'vertical' | 'horizontal' | 'both';
 
   /** Whether the vertical (row) axis is virtualized, derived from `orientation`. */
   readonly verticalEnabled: boolean;
@@ -93,13 +99,19 @@ export declare class RunwayGrid extends HTMLElement {
   readonly colCount: number;
 
   /** Initial/estimated row height in pixels, from the `row-size` (or legacy `item-size`) attribute. */
-  readonly rowSize: number;
+  rowSize: number;
 
   /** Initial/estimated column width in pixels, from the `col-size` attribute. */
-  readonly colSize: number;
+  colSize: number;
 
   /** Number of extra rows/columns rendered outside the visible viewport, from the `buffer-size` attribute. */
-  readonly bufferSize: number;
+  bufferSize: number;
+
+  /** The internal array of row data objects currently loaded. */
+  rows: unknown[];
+
+  /** The internal array of column definitions, or null if only numeric column count was configured. */
+  columnsData: unknown[] | null;
 
   /**
    * Whether initializing the shared embedded WASM engine has completed successfully.
@@ -118,6 +130,7 @@ export declare class RunwayGrid extends HTMLElement {
    * The row data. Setting it (re)builds the internal layout registry and
    * resets the scroll position to the origin.
    */
+  get data(): readonly unknown[];
   set data(rows: readonly unknown[]);
 
   /**
@@ -151,6 +164,7 @@ export declare class RunwayGrid extends HTMLElement {
    * The column definitions, or a plain column count. Must be set before
    * `data` when using `orientation="horizontal"` or `orientation="both"`.
    */
+  get columns(): readonly unknown[] | number;
   set columns(colsOrCount: readonly unknown[] | number);
 
   /** Renders a cell's content. See {@link RunwayGridTemplate}. */
