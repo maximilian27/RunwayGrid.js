@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import {test, expect} from '@playwright/test';
 
 // Regression coverage for: `.runway-grid__viewport` relied on `overflow: hidden` to hide the
 // raw DOM pool, so it never accepted native touch-panning - mobile browsers interpreted swipes
@@ -7,9 +7,9 @@ import { test, expect } from '@playwright/test';
 // `touchstart`/`touchmove` to the virtual scroll position (`_onTouchStart`/`_onTouchMove`),
 // mirroring the existing `_onWheel` handling.
 test.describe('runway-grid - touch scrolling', () => {
-  test.use({ hasTouch: true });
+  test.use({hasTouch: true});
 
-  test.beforeEach(async ({ page }) => {
+  test.beforeEach(async ({page}) => {
     await page.goto('/examples/01-vertical-list.html');
 
     await page.waitForFunction(() => {
@@ -21,7 +21,7 @@ test.describe('runway-grid - touch scrolling', () => {
   // Playwright's touchscreen helpers don't emit intermediate `touchmove` points, so the
   // gesture is simulated by dispatching real `Touch`/`TouchEvent` objects directly on the
   // viewport - exactly what a mobile browser delivers to `_onTouchStart`/`_onTouchMove`.
-  test('a single-finger swipe moves the virtual scroll position by the dragged distance', async ({ page }) => {
+  test('a single-finger swipe moves the virtual scroll position by the dragged distance', async ({page}) => {
     const before = await page.evaluate(() => document.getElementById('my-list')._virtualScrollTop);
     expect(before).toBe(0);
 
@@ -34,8 +34,14 @@ test.describe('runway-grid - touch scrolling', () => {
       const startY = rect.y + rect.height / 2;
 
       const makeTouchEvent = (type, x, y, cancelable) => {
-        const touch = new Touch({ identifier: 1, target: viewport, clientX: x, clientY: y });
-        return new TouchEvent(type, { touches: [touch], targetTouches: [touch], changedTouches: [touch], bubbles: true, cancelable });
+        const touch = new Touch({identifier: 1, target: viewport, clientX: x, clientY: y});
+        return new TouchEvent(type, {
+          touches: [touch],
+          targetTouches: [touch],
+          changedTouches: [touch],
+          bubbles: true,
+          cancelable
+        });
       };
 
       viewport.dispatchEvent(makeTouchEvent('touchstart', startX, startY, false));
@@ -47,14 +53,14 @@ test.describe('runway-grid - touch scrolling', () => {
       }
       viewport.dispatchEvent(makeTouchEvent('touchend', startX, startY - distance, false));
 
-      return { virtualScrollTop: host._virtualScrollTop, prevented };
+      return {virtualScrollTop: host._virtualScrollTop, prevented};
     }, swipeDistance);
 
     expect(result.prevented).toBe(true);
     expect(result.virtualScrollTop).toBe(swipeDistance);
   });
 
-  test('the scrollbar track visually reflects the touch-driven scroll position', async ({ page }) => {
+  test('the scrollbar track visually reflects the touch-driven scroll position', async ({page}) => {
     await page.evaluate(() => {
       const host = document.getElementById('my-list');
       const viewport = host.shadowRoot.querySelector('.runway-grid__viewport');
@@ -63,8 +69,14 @@ test.describe('runway-grid - touch scrolling', () => {
       const startY = rect.y + rect.height / 2;
 
       const makeTouchEvent = (type, x, y, cancelable) => {
-        const touch = new Touch({ identifier: 1, target: viewport, clientX: x, clientY: y });
-        return new TouchEvent(type, { touches: [touch], targetTouches: [touch], changedTouches: [touch], bubbles: true, cancelable });
+        const touch = new Touch({identifier: 1, target: viewport, clientX: x, clientY: y});
+        return new TouchEvent(type, {
+          touches: [touch],
+          targetTouches: [touch],
+          changedTouches: [touch],
+          bubbles: true,
+          cancelable
+        });
       };
 
       viewport.dispatchEvent(makeTouchEvent('touchstart', startX, startY, false));
@@ -80,7 +92,7 @@ test.describe('runway-grid - touch scrolling', () => {
     });
   });
 
-  test('reversing drag direction reacts immediately with zero dead-zone freeze', async ({ page }) => {
+  test('reversing drag direction reacts immediately with zero dead-zone freeze', async ({page}) => {
     const result = await page.evaluate(() => {
       const host = document.getElementById('my-list');
       const viewport = host.shadowRoot.querySelector('.runway-grid__viewport');
@@ -89,8 +101,14 @@ test.describe('runway-grid - touch scrolling', () => {
       const startY = rect.y + rect.height / 2;
 
       const makeTouchEvent = (type, x, y, cancelable) => {
-        const touch = new Touch({ identifier: 1, target: viewport, clientX: x, clientY: y });
-        return new TouchEvent(type, { touches: [touch], targetTouches: [touch], changedTouches: [touch], bubbles: true, cancelable });
+        const touch = new Touch({identifier: 1, target: viewport, clientX: x, clientY: y});
+        return new TouchEvent(type, {
+          touches: [touch],
+          targetTouches: [touch],
+          changedTouches: [touch],
+          bubbles: true,
+          cancelable
+        });
       };
 
       // 1. Touch start at origin (virtualScrollTop is 0)
@@ -110,14 +128,14 @@ test.describe('runway-grid - touch scrolling', () => {
 
       viewport.dispatchEvent(makeTouchEvent('touchend', startX, startY + 50, false));
 
-      return { atBoundary, afterReverse };
+      return {atBoundary, afterReverse};
     });
 
     expect(result.atBoundary).toBe(0);
     expect(result.afterReverse).toBe(50);
   });
 
-  test('flicking with velocity launches smooth momentum scrolling past the release point', async ({ page }) => {
+  test('flicking with velocity launches smooth momentum scrolling past the release point', async ({page}) => {
     // Perform a timed swipe with real delays between touchmove events to build velocity
     await page.evaluate(async () => {
       const host = document.getElementById('my-list');
@@ -127,7 +145,7 @@ test.describe('runway-grid - touch scrolling', () => {
       const startY = rect.y + rect.height / 2;
 
       const makeTouchEvent = (type, x, y, cancelable, touches) => {
-        const touch = new Touch({ identifier: 1, target: viewport, clientX: x, clientY: y });
+        const touch = new Touch({identifier: 1, target: viewport, clientX: x, clientY: y});
         return new TouchEvent(type, {
           touches: touches !== undefined ? touches : [touch],
           targetTouches: touches !== undefined ? touches : [touch],
@@ -157,19 +175,19 @@ test.describe('runway-grid - touch scrolling', () => {
 
     // Wait for momentum animation to glide further down
     await page.waitForFunction(
-      (pos) => {
-        const host = document.getElementById('my-list');
-        return host && host._virtualScrollTop > pos + 100;
-      },
-      releasePos,
-      { timeout: 3000 }
+        (pos) => {
+          const host = document.getElementById('my-list');
+          return host && host._virtualScrollTop > pos + 100;
+        },
+        releasePos,
+        {timeout: 3000}
     );
 
     const glidedPos = await page.evaluate(() => document.getElementById('my-list')._virtualScrollTop);
     expect(glidedPos).toBeGreaterThan(releasePos);
   });
 
-  test('touching the viewport during momentum scrolling immediately arrests the glide', async ({ page }) => {
+  test('touching the viewport during momentum scrolling immediately arrests the glide', async ({page}) => {
     // 1. Launch a flick
     await page.evaluate(async () => {
       const host = document.getElementById('my-list');
@@ -179,7 +197,7 @@ test.describe('runway-grid - touch scrolling', () => {
       const startY = rect.y + rect.height / 2;
 
       const makeTouchEvent = (type, x, y, cancelable, touches) => {
-        const touch = new Touch({ identifier: 1, target: viewport, clientX: x, clientY: y });
+        const touch = new Touch({identifier: 1, target: viewport, clientX: x, clientY: y});
         return new TouchEvent(type, {
           touches: touches !== undefined ? touches : [touch],
           targetTouches: touches !== undefined ? touches : [touch],
@@ -208,8 +226,13 @@ test.describe('runway-grid - touch scrolling', () => {
       const host = document.getElementById('my-list');
       const viewport = host.shadowRoot.querySelector('.runway-grid__viewport');
       const rect = viewport.getBoundingClientRect();
-      const touch = new Touch({ identifier: 2, target: viewport, clientX: rect.x + 50, clientY: rect.y + 50 });
-      viewport.dispatchEvent(new TouchEvent('touchstart', { touches: [touch], targetTouches: [touch], changedTouches: [touch], bubbles: true }));
+      const touch = new Touch({identifier: 2, target: viewport, clientX: rect.x + 50, clientY: rect.y + 50});
+      viewport.dispatchEvent(new TouchEvent('touchstart', {
+        touches: [touch],
+        targetTouches: [touch],
+        changedTouches: [touch],
+        bubbles: true
+      }));
       host._capturedAt = host._virtualScrollTop;
     });
 
@@ -224,21 +247,37 @@ test.describe('runway-grid - touch scrolling', () => {
     expect(posAfterWait).toBe(capturedAt);
   });
 
-  test('touchcancel cleanly resets touch state and arrests momentum', async ({ page }) => {
+  test('touchcancel cleanly resets touch state and arrests momentum', async ({page}) => {
     await page.evaluate(() => {
       const host = document.getElementById('my-list');
       const viewport = host.shadowRoot.querySelector('.runway-grid__viewport');
       const rect = viewport.getBoundingClientRect();
 
-      const touch = new Touch({ identifier: 1, target: viewport, clientX: rect.x + 50, clientY: rect.y + 50 });
-      viewport.dispatchEvent(new TouchEvent('touchstart', { touches: [touch], targetTouches: [touch], changedTouches: [touch], bubbles: true }));
+      const touch = new Touch({identifier: 1, target: viewport, clientX: rect.x + 50, clientY: rect.y + 50});
+      viewport.dispatchEvent(new TouchEvent('touchstart', {
+        touches: [touch],
+        targetTouches: [touch],
+        changedTouches: [touch],
+        bubbles: true
+      }));
 
       // Move a bit
-      const touchMove = new Touch({ identifier: 1, target: viewport, clientX: rect.x + 50, clientY: rect.y + 30 });
-      viewport.dispatchEvent(new TouchEvent('touchmove', { touches: [touchMove], targetTouches: [touchMove], changedTouches: [touchMove], bubbles: true, cancelable: true }));
+      const touchMove = new Touch({identifier: 1, target: viewport, clientX: rect.x + 50, clientY: rect.y + 30});
+      viewport.dispatchEvent(new TouchEvent('touchmove', {
+        touches: [touchMove],
+        targetTouches: [touchMove],
+        changedTouches: [touchMove],
+        bubbles: true,
+        cancelable: true
+      }));
 
       // Cancel
-      viewport.dispatchEvent(new TouchEvent('touchcancel', { touches: [], targetTouches: [], changedTouches: [touchMove], bubbles: true }));
+      viewport.dispatchEvent(new TouchEvent('touchcancel', {
+        touches: [],
+        targetTouches: [],
+        changedTouches: [touchMove],
+        bubbles: true
+      }));
     });
 
     const isTouchScrolling = await page.evaluate(() => document.getElementById('my-list')._isTouchScrolling);
@@ -247,26 +286,26 @@ test.describe('runway-grid - touch scrolling', () => {
     expect(momentumRaf).toBeNull();
   });
 
-  test('multiple consecutive real touch swipes continue to scroll smoothly', async ({ page, context }) => {
+  test('multiple consecutive real touch swipes continue to scroll smoothly', async ({page, context}) => {
     const client = await context.newCDPSession(page);
 
     async function swipe(startY, endY, steps = 10, stepDelay = 16) {
       const box = await page.evaluate(() => {
         const host = document.getElementById('my-list');
         const r = host.getBoundingClientRect();
-        return { x: r.x + r.width / 2, y: r.y };
+        return {x: r.x + r.width / 2, y: r.y};
       });
       const x = box.x;
       await client.send('Input.dispatchTouchEvent', {
         type: 'touchStart',
-        touchPoints: [{ x, y: box.y + startY, id: 0 }]
+        touchPoints: [{x, y: box.y + startY, id: 0}]
       });
       for (let i = 1; i <= steps; i++) {
         await new Promise(r => setTimeout(r, stepDelay));
         const curY = box.y + startY + (endY - startY) * (i / steps);
         await client.send('Input.dispatchTouchEvent', {
           type: 'touchMove',
-          touchPoints: [{ x, y: curY, id: 0 }]
+          touchPoints: [{x, y: curY, id: 0}]
         });
       }
       await client.send('Input.dispatchTouchEvent', {
@@ -295,12 +334,253 @@ test.describe('runway-grid - touch scrolling', () => {
     const pos3 = await page.evaluate(() => document.getElementById('my-list')._virtualScrollTop);
     expect(pos3).toBeGreaterThan(pos2 + 100);
   });
+
+  test('a soft touch when scrolling up does not trigger momentum or skip elements', async ({page}) => {
+    await page.evaluate(async () => {
+      const host = document.getElementById('my-list');
+      host.scrollToIndex(100);
+      await new Promise((r) => requestAnimationFrame(r));
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    const result = await page.evaluate(async () => {
+      const host = document.getElementById('my-list');
+      const viewport = host.shadowRoot.querySelector('.runway-grid__viewport');
+      const rect = viewport.getBoundingClientRect();
+      const startX = rect.x + rect.width / 2;
+      const startY = rect.y + rect.height / 2;
+
+      const makeTouchEvent = (type, x, y, cancelable, touches) => {
+        const touch = new Touch({identifier: 1, target: viewport, clientX: x, clientY: y});
+        return new TouchEvent(type, {
+          touches: touches !== undefined ? touches : [touch],
+          targetTouches: touches !== undefined ? touches : [touch],
+          changedTouches: [touch],
+          bubbles: true,
+          cancelable,
+        });
+      };
+
+      const initialTop = host._virtualScrollTop;
+
+      // Soft touch scroll UP: finger moves down by 6px (deltaY = -6px)
+      viewport.dispatchEvent(makeTouchEvent('touchstart', startX, startY, false));
+      await new Promise((r) => setTimeout(r, 20));
+      viewport.dispatchEvent(makeTouchEvent('touchmove', startX, startY + 6, true));
+
+      const topAtRelease = host._virtualScrollTop;
+      const node100AtRelease = host.shadowRoot.querySelector('[data-row="100"]');
+      const node100TopAtRelease = node100AtRelease ? node100AtRelease.getBoundingClientRect().top : null;
+
+      viewport.dispatchEvent(makeTouchEvent('touchend', startX, startY + 6, false, []));
+
+      // Wait to ensure no momentum glide occurs and size adjustments settle cleanly
+      await new Promise((r) => setTimeout(r, 200));
+
+      const topAfterWait = host._virtualScrollTop;
+      const momentumRaf = host._momentumRafId;
+      const node100AfterWait = host.shadowRoot.querySelector('[data-row="100"]');
+      const node100TopAfterWait = node100AfterWait ? node100AfterWait.getBoundingClientRect().top : null;
+
+      return {
+        initialTop,
+        topAtRelease,
+        topAfterWait,
+        momentumRaf,
+        node100TopAtRelease,
+        node100TopAfterWait,
+      };
+    });
+
+    // Virtual scroll moved by the soft touch delta (6px) at release
+    expect(result.topAtRelease).toBeCloseTo(result.initialTop - 6, 1);
+    // Momentum is not triggered on a soft touch
+    expect(result.momentumRaf).toBeNull();
+    // On-screen visual position of the visible element is perfectly preserved without jumping
+    expect(result.node100TopAfterWait).toBeCloseTo(result.node100TopAtRelease, 1);
+  });
+
+  test('pausing finger before release suppresses momentum fling', async ({page}) => {
+    const result = await page.evaluate(async () => {
+      const host = document.getElementById('my-list');
+      const viewport = host.shadowRoot.querySelector('.runway-grid__viewport');
+      const rect = viewport.getBoundingClientRect();
+      const startX = rect.x + rect.width / 2;
+      const startY = rect.y + rect.height / 2;
+
+      const makeTouchEvent = (type, x, y, cancelable, touches) => {
+        const touch = new Touch({identifier: 1, target: viewport, clientX: x, clientY: y});
+        return new TouchEvent(type, {
+          touches: touches !== undefined ? touches : [touch],
+          targetTouches: touches !== undefined ? touches : [touch],
+          changedTouches: [touch],
+          bubbles: true,
+          cancelable,
+        });
+      };
+
+      // Fast swipe
+      viewport.dispatchEvent(makeTouchEvent('touchstart', startX, startY, false));
+      for (let i = 1; i <= 3; i++) {
+        await new Promise((r) => setTimeout(r, 16));
+        viewport.dispatchEvent(makeTouchEvent('touchmove', startX, startY - 30 * i, true));
+      }
+
+      // Pause for 60ms while resting finger on glass before lifting
+      await new Promise((r) => setTimeout(r, 60));
+      const posAtPause = host._virtualScrollTop;
+
+      viewport.dispatchEvent(makeTouchEvent('touchend', startX, startY - 90, false, []));
+
+      // Wait to verify momentum was suppressed
+      await new Promise((r) => setTimeout(r, 200));
+      const posAfterWait = host._virtualScrollTop;
+      const momentumRaf = host._momentumRafId;
+
+      return {posAtPause, posAfterWait, momentumRaf};
+    });
+
+    expect(result.posAfterWait).toBe(result.posAtPause);
+    expect(result.momentumRaf).toBeNull();
+  });
+
+  test('scrolling up over dynamic taller elements anchors smoothly without skipping elements', async ({page}) => {
+    await page.evaluate(async () => {
+      const host = document.getElementById('my-list');
+      // Scroll to index 95. Row 91 (index % 7 === 0) is a much taller card (~200px+)
+      // which is currently unmeasured outside the buffer (rows 90-94).
+      host.scrollToIndex(95);
+      await new Promise((r) => requestAnimationFrame(r));
+      await new Promise((r) => setTimeout(r, 100));
+    });
+
+    const result = await page.evaluate(async () => {
+      const host = document.getElementById('my-list');
+      const viewport = host.shadowRoot.querySelector('.runway-grid__viewport');
+      const rect = viewport.getBoundingClientRect();
+      const startX = rect.x + rect.width / 2;
+      const startY = rect.y + rect.height / 2;
+
+      const makeTouchEvent = (type, x, y, cancelable, touches) => {
+        const touch = new Touch({identifier: 1, target: viewport, clientX: x, clientY: y});
+        return new TouchEvent(type, {
+          touches: touches !== undefined ? touches : [touch],
+          targetTouches: touches !== undefined ? touches : [touch],
+          changedTouches: [touch],
+          bubbles: true,
+          cancelable,
+        });
+      };
+
+      const topBefore = host._virtualScrollTop;
+      const node95Before = host.shadowRoot.querySelector('[data-row="95"]');
+      const node95TopBefore = node95Before ? node95Before.getBoundingClientRect().top : 0;
+
+      // Soft touch scroll UP: finger moves down by 15px over 3 steps
+      viewport.dispatchEvent(makeTouchEvent('touchstart', startX, startY, false));
+      for (let i = 1; i <= 3; i++) {
+        await new Promise((r) => setTimeout(r, 20));
+        viewport.dispatchEvent(makeTouchEvent('touchmove', startX, startY + 5 * i, true));
+      }
+
+      viewport.dispatchEvent(makeTouchEvent('touchend', startX, startY + 15, false, []));
+
+      // Wait for ResizeObserver and layout anchoring to settle
+      await new Promise((r) => setTimeout(r, 200));
+
+      const node95After = host.shadowRoot.querySelector('[data-row="95"]');
+      const node95TopAfter = node95After ? node95After.getBoundingClientRect().top : 0;
+      const momentumRaf = host._momentumRafId;
+
+      return {
+        topBefore,
+        node95TopBefore,
+        node95TopAfter,
+        displacement: node95TopAfter - node95TopBefore,
+        momentumRaf,
+      };
+    });
+
+    // Row 95 shifted down on screen by exactly the 15px touch drag, not skipping ~200px from the taller card
+    expect(result.displacement).toBeCloseTo(15, 2);
+    expect(result.momentumRaf).toBeNull();
+  });
+});
+
+test.describe('runway-grid - horizontal dynamic chip touch scrolling', () => {
+  test.use({hasTouch: true});
+
+  test('scrolling left over dynamic wider chips anchors smoothly without skipping columns', async ({page}) => {
+    await page.goto('/examples/03-horizontal-list.html');
+    await page.waitForFunction(() => {
+      const el = document.getElementById('h-list');
+      return el && el.registry !== null && el.renderedNodes.length > 0;
+    });
+
+    await page.evaluate(async () => {
+      const host = document.getElementById('h-list');
+      // Scroll to column 30. Column 24 (colIndex % 4 === 0) is a much wider chip
+      // currently outside the active buffer.
+      host.scrollToCell(0, 30);
+      await new Promise((r) => requestAnimationFrame(r));
+      await new Promise((r) => setTimeout(r, 100));
+    });
+
+    const result = await page.evaluate(async () => {
+      const host = document.getElementById('h-list');
+      const viewport = host.shadowRoot.querySelector('.runway-grid__viewport');
+      const rect = viewport.getBoundingClientRect();
+      const startX = rect.x + rect.width / 2;
+      const startY = rect.y + rect.height / 2;
+
+      const makeTouchEvent = (type, x, y, cancelable, touches) => {
+        const touch = new Touch({identifier: 1, target: viewport, clientX: x, clientY: y});
+        return new TouchEvent(type, {
+          touches: touches !== undefined ? touches : [touch],
+          targetTouches: touches !== undefined ? touches : [touch],
+          changedTouches: [touch],
+          bubbles: true,
+          cancelable,
+        });
+      };
+
+      const node30Before = host.shadowRoot.querySelector('[data-col="30"]');
+      const node30LeftBefore = node30Before ? node30Before.getBoundingClientRect().left : 0;
+
+      // Soft touch scroll LEFT: finger moves right by 15px over 3 steps
+      viewport.dispatchEvent(makeTouchEvent('touchstart', startX, startY, false));
+      for (let i = 1; i <= 3; i++) {
+        await new Promise((r) => setTimeout(r, 20));
+        viewport.dispatchEvent(makeTouchEvent('touchmove', startX + 5 * i, startY, true));
+      }
+
+      viewport.dispatchEvent(makeTouchEvent('touchend', startX + 15, startY, false, []));
+
+      // Wait for ResizeObserver and layout anchoring to settle
+      await new Promise((r) => setTimeout(r, 200));
+
+      const node30After = host.shadowRoot.querySelector('[data-col="30"]');
+      const node30LeftAfter = node30After ? node30After.getBoundingClientRect().left : 0;
+      const momentumRaf = host._momentumRafId;
+
+      return {
+        node30LeftBefore,
+        node30LeftAfter,
+        displacement: node30LeftAfter - node30LeftBefore,
+        momentumRaf,
+      };
+    });
+
+    // Column 30 shifted right on screen by exactly the 15px touch drag without jumping or skipping columns
+    expect(result.displacement).toBeCloseTo(15, 2);
+    expect(result.momentumRaf).toBeNull();
+  });
 });
 
 test.describe('runway-grid - 2D grid touch scrolling', () => {
-  test.use({ hasTouch: true });
+  test.use({hasTouch: true});
 
-  test('a diagonal swipe moves both vertical and horizontal scroll positions', async ({ page }) => {
+  test('a diagonal swipe moves both vertical and horizontal scroll positions', async ({page}) => {
     await page.goto('/examples/02-grid-2d.html');
     await page.waitForFunction(() => {
       const el = document.getElementById('grid-demo');
@@ -316,8 +596,14 @@ test.describe('runway-grid - 2D grid touch scrolling', () => {
       const startY = rect.y + rect.height / 2;
 
       const makeTouchEvent = (type, x, y, cancelable) => {
-        const touch = new Touch({ identifier: 1, target: viewport, clientX: x, clientY: y });
-        return new TouchEvent(type, { touches: [touch], targetTouches: [touch], changedTouches: [touch], bubbles: true, cancelable });
+        const touch = new Touch({identifier: 1, target: viewport, clientX: x, clientY: y});
+        return new TouchEvent(type, {
+          touches: [touch],
+          targetTouches: [touch],
+          changedTouches: [touch],
+          bubbles: true,
+          cancelable
+        });
       };
 
       viewport.dispatchEvent(makeTouchEvent('touchstart', startX, startY, false));
