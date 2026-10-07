@@ -964,12 +964,15 @@ export class RunwayGrid extends HTMLElement {
             ? (this.columnsData ? this.columnsData[colIndex] : (this.rows ? this.rows[colIndex] : undefined))
             : (this.rows ? this.rows[rowIndex] : undefined);
           const newContent = this.renderItem(item, rowIndex, colIndex, this.rowCount, this.colCount);
-          if (typeof newContent === 'string') {
-            node.innerHTML = newContent;
-          } else if (typeof newContent === 'number' || typeof newContent === 'boolean') {
-            node.textContent = String(newContent);
-          } else if (newContent instanceof Node) {
-            node.appendChild(newContent);
+          if (newContent !== undefined) {
+            node.innerHTML = '';
+            if (typeof newContent === 'string') {
+              node.innerHTML = newContent;
+            } else if (typeof newContent === 'number' || typeof newContent === 'boolean') {
+              node.textContent = String(newContent);
+            } else if (newContent instanceof Node) {
+              node.appendChild(newContent);
+            }
           }
 
           if (this.resizeObserver) this.resizeObserver.observe(node);

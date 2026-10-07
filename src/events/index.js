@@ -3,7 +3,7 @@
  *
  * @module events
  */
-import { handleWheel } from './wheel.js';
+import {handleWheel} from './wheel.js';
 import {
   onTouchStart,
   onTouchMove,
@@ -13,9 +13,9 @@ import {
   startMomentum,
   stopMomentum,
 } from './touch.js';
-import { handleKeyDown } from './keyboard.js';
-import { handleTrackScroll, handleMouseUp } from './track.js';
-import { handleResize } from './resize.js';
+import {handleKeyDown} from './keyboard.js';
+import {handleTrackScroll, handleMouseUp} from './track.js';
+import {handleResize} from './resize.js';
 
 export {
   handleWheel,
@@ -40,27 +40,36 @@ export {
 export function bindEvents(grid) {
   grid._handleMouseUp = () => grid._onMouseUp();
 
-  grid.verticalTrack.addEventListener('mousedown', () => { grid._isDraggingVertical = true; });
-  grid.horizontalTrack.addEventListener('mousedown', () => { grid._isDraggingHorizontal = true; });
+  grid.verticalTrack.addEventListener('mousedown', () => {
+    grid._stopMomentum();
+    grid._isDraggingVertical = true;
+  });
+  grid.horizontalTrack.addEventListener('mousedown', () => {
+    grid._stopMomentum();
+    grid._isDraggingHorizontal = true;
+  });
 
   grid.verticalTrack.addEventListener('scroll', () => grid._onTrackScroll('vertical'));
   grid.horizontalTrack.addEventListener('scroll', () => grid._onTrackScroll('horizontal'));
 
-  grid.viewport.addEventListener('wheel', (e) => grid._onWheel(e), { passive: false });
+  grid.viewport.addEventListener('wheel', (e) => grid._onWheel(e), {passive: false});
   grid.viewport.addEventListener('keydown', (e) => grid._onKeyDown(e));
 
   // `touchstart` is passive (it never needs to block native behavior), while `touchmove`
   // and `touchend` must be non-passive so they can call `e.preventDefault()` to prevent
   // browser touch cancellation and unwanted tap triggers when catching momentum.
-  grid.viewport.addEventListener('touchstart', (e) => grid._onTouchStart(e), { passive: true });
-  grid.viewport.addEventListener('touchmove', (e) => grid._onTouchMove(e), { passive: false });
-  grid.viewport.addEventListener('touchend', (e) => grid._onTouchEnd(e), { passive: false });
-  grid.viewport.addEventListener('touchcancel', (e) => grid._onTouchCancel(e), { passive: true });
+  grid.viewport.addEventListener('touchstart', (e) => grid._onTouchStart(e), {passive: true});
+  grid.viewport.addEventListener('touchmove', (e) => grid._onTouchMove(e), {passive: false});
+  grid.viewport.addEventListener('touchend', (e) => grid._onTouchEnd(e), {passive: false});
+  grid.viewport.addEventListener('touchcancel', (e) => grid._onTouchCancel(e), {passive: true});
 
   grid.resizeObserver = new ResizeObserver((entries) => grid._onResize(entries));
   grid.containerObserver = new ResizeObserver(() => {
     if (grid._invalidateLayoutCache) grid._invalidateLayoutCache();
-    const { width: vw, height: vh } = grid._getViewportSize ? grid._getViewportSize() : { width: grid.viewport.clientWidth, height: grid.viewport.clientHeight };
+    const {width: vw, height: vh} = grid._getViewportSize ? grid._getViewportSize() : {
+      width: grid.viewport.clientWidth,
+      height: grid.viewport.clientHeight
+    };
     if (vh > 0 || vw > 0) grid.calculateIndices();
   });
 }

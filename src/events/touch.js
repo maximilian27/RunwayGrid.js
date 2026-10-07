@@ -5,6 +5,34 @@
  */
 
 /**
+ * Minimum finger displacement (in pixels) required before release velocity
+ * is eligible to trigger momentum inertial scrolling. Prevents soft taps and
+ * micro-drags from launching unintended momentum flings.
+ */
+const MIN_FLING_DISPLACEMENT = 10;
+
+/**
+ * Velocity threshold (in pixels per millisecond, equivalent to 350 px/sec)
+ * below which touch release is considered a soft drag or resting touch rather
+ * than a dynamic flick gesture.
+ */
+const MIN_FLING_VELOCITY = 0.35;
+
+/**
+ * Maximum elapsed time (in milliseconds) since the last touchmove event for a
+ * touch to still be considered an active flick. If the finger pauses longer
+ * than this before releasing, the release velocity is treated as zero.
+ */
+const MAX_FLING_PAUSE_TIME = 50;
+
+/**
+ * Time window (in milliseconds) of recent touch samples used to calculate
+ * release velocity. Restricting to the final tail prevents historical moves
+ * or direction reversals from corrupting the true release momentum.
+ */
+const VELOCITY_SAMPLE_WINDOW = 60;
+
+/**
  * Tracks handled touch events to prevent duplicate processing when listening on both
  * initial touch targets and the container viewport.
  * @type {WeakSet<TouchEvent>}
@@ -36,9 +64,11 @@ export function onTouchStart(grid, e) {
 
   const touch = e.touches[0];
   grid._activeTouchId = touch.identifier;
+  grid._touchStartX = touch.clientX;
+  grid._touchStartY = touch.clientY;
   grid._lastTouchX = touch.clientX;
   grid._lastTouchY = touch.clientY;
-  grid._touchHistory = [{ x: touch.clientX, y: touch.clientY, time: performance.now() }];
+  grid._touchHistory = [{x: touch.clientX, y: touch.clientY, time: performance.now()}];
   grid._isTouchScrolling = true;
   grid._caughtMomentum = hadMomentum;
 
@@ -49,9 +79,9 @@ export function onTouchStart(grid, e) {
   // touchmove and touchend events even if the cell content is recycled during the drag.
   if (e.target && e.target !== grid.viewport && typeof e.target.addEventListener === 'function') {
     grid._touchTarget = e.target;
-    grid._touchTarget.addEventListener('touchmove', grid._boundTouchMove, { passive: false });
-    grid._touchTarget.addEventListener('touchend', grid._boundTouchEnd, { passive: false });
-    grid._touchTarget.addEventListener('touchcancel', grid._boundTouchCancel, { passive: true });
+    grid._touchTarget.addEventListener('touchmove', grid._boundTouchMove, {passive: false});
+    grid._touchTarget.addEventListener('touchend', grid._boundTouchEnd, {passive: false});
+    grid._touchTarget.addEventListener('touchcancel', grid._boundTouchCancel, {passive: true});
   }
 }
 
@@ -105,7 +135,10 @@ export function onTouchMove(grid, e) {
     e.preventDefault();
   }
 
-  grid._caughtMomentum = false;
+  const totalDist = Math.hypot(touch.clientX - grid._touchStartX, touch.clientY - grid._touchStartY);
+  if (totalDist > 8) {
+    grid._caughtMomentum = false;
+  }
 
   const deltaX = grid._lastTouchX - touch.clientX;
   const deltaY = grid._lastTouchY - touch.clientY;
@@ -113,8 +146,8 @@ export function onTouchMove(grid, e) {
   grid._lastTouchY = touch.clientY;
 
   const now = performance.now();
-  grid._touchHistory.push({ x: touch.clientX, y: touch.clientY, time: now });
-  while (grid._touchHistory.length > 1 && now - grid._touchHistory[0].time > 100) {
+  grid._touchHistory.push({x: touch.clientX, y: touch.clientY, time: now});
+  while (grid._touchHistory.length > 1 && now - grid._touchHistory[0].time > VELOCITY_SAMPLE_WINDOW) {
     grid._touchHistory.shift();
   }
 
@@ -161,12 +194,29 @@ export function onTouchEnd(grid, e) {
   const now = performance.now();
   if (grid._touchHistory.length >= 2) {
     const latest = grid._touchHistory[grid._touchHistory.length - 1];
-    if (now - latest.time < 80) {
-      const oldest = grid._touchHistory[0];
-      const dt = latest.time - oldest.time;
-      if (dt >= 10) {
-        const vx = (oldest.x - latest.x) / dt;
-        const vy = (oldest.y - latest.y) / dt;
+    const idleTime = now - latest.time;
+
+    // Only launch momentum if the touch was released while still actively moving (not paused)
+    if (idleTime <= MAX_FLING_PAUSE_TIME) {
+      // Find oldest sample within the recent sample window
+      let oldest = latest;
+      for (let i = grid._touchHistory.length - 2; i >= 0; i--) {
+        const sample = grid._touchHistory[i];
+        if (latest.time - sample.time <= VELOCITY_SAMPLE_WINDOW) {
+          oldest = sample;
+        } else {
+          break;
+        }
+      }
+
+      const moveDt = latest.time - oldest.time;
+      const totalDt = moveDt + idleTime;
+      const dist = Math.hypot(oldest.x - latest.x, oldest.y - latest.y);
+
+      // Require meaningful displacement and minimum duration to qualify as a flick
+      if (totalDt >= 15 && dist >= MIN_FLING_DISPLACEMENT) {
+        const vx = (oldest.x - latest.x) / totalDt;
+        const vy = (oldest.y - latest.y) / totalDt;
         grid._startMomentum(vx, vy);
       }
     }
@@ -219,9 +269,9 @@ export function startMomentum(grid, vx, vy) {
   if (!grid.horizontalEnabled) vx = 0;
 
   const speed = Math.hypot(vx, vy);
-  if (speed < 0.15) return;
+  if (speed < MIN_FLING_VELOCITY) return;
 
-  const maxSpeed = 4.0;
+  const maxSpeed = 3.5;
   if (speed > maxSpeed) {
     const scale = maxSpeed / speed;
     vx *= scale;
@@ -229,7 +279,7 @@ export function startMomentum(grid, vx, vy) {
   }
 
   let lastTime = performance.now();
-  const friction = 0.955;
+  const friction = 0.94;
 
   const step = () => {
     const now = performance.now();
@@ -247,21 +297,21 @@ export function startMomentum(grid, vx, vy) {
       grid._scrollByDelta(dx, dy);
 
       if (grid.verticalEnabled && Math.abs(vy) > 0.01) {
-        const { height: vh } = grid._getViewportSize ? grid._getViewportSize() : { height: grid.viewport.clientHeight };
+        const {height: vh} = grid._getViewportSize ? grid._getViewportSize() : {height: grid.viewport.clientHeight};
         const maxV = grid.registry ? grid.registry.get_total_height() - vh : 0;
         if (grid._virtualScrollTop <= 0 || grid._virtualScrollTop >= maxV) {
           vy = 0;
         }
       }
       if (grid.horizontalEnabled && Math.abs(dx) > 0.01) {
-        const { width: vw } = grid._getViewportSize ? grid._getViewportSize() : { width: grid.viewport.clientWidth };
+        const {width: vw} = grid._getViewportSize ? grid._getViewportSize() : {width: grid.viewport.clientWidth};
         const maxH = grid.registry ? grid.registry.get_total_width() - vw : 0;
         if (grid._virtualScrollLeft <= 0 || grid._virtualScrollLeft >= maxH) {
           vx = 0;
         }
       }
 
-      if (Math.hypot(vx, vy) < 0.02 || !grid.registry) {
+      if (Math.hypot(vx, vy) < 0.03 || !grid.registry) {
         stopMomentum(grid);
         return;
       }
