@@ -6,6 +6,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
 
+## [1.0.0-rc3] - 2026-10-07
+
+### Added
+
+- Dynamic scroll anchoring in `handleResize` (`src/events/resize.js`): calculates anchor row and column offset deltas before and after applying measured cell sizes, counter-scrolling automatically to eliminate layout jumps and prevent element skipping when scrolling upward or leftward past variable-sized items.
+- Momentum gesture suppression controls in `src/events/touch.js`: introduced `MIN_FLING_DISPLACEMENT`, `MIN_FLING_VELOCITY`, `MAX_FLING_PAUSE_TIME`, and a `VELOCITY_SAMPLE_WINDOW` to prevent micro-drags, soft taps, and paused releases from triggering accidental fling animations.
+- Dedicated touch interaction end-to-end test suite (`tests/e2e/touch-scroll.spec.js`) validating single and consecutive swipes, gesture reversals, momentum glide, tap-to-stop, pause suppression, soft touches, and multi-axis dynamic scroll anchoring.
+
+### Changed
+
+- Calibrated momentum deceleration physics in `startMomentum`: adjusted friction factor to `0.94`, capped maximum fling velocity at `3.5` px/ms, and raised stopping speed threshold to `0.03` px/ms for more natural and controlled deceleration.
+- Improved momentum touch-stop sensitivity: requires an 8px drag threshold before discarding caught-momentum state to reliably halt gliding on tap.
+- Updated Playwright dev server configuration (`playwright.config.js`) to pass `--base /`, ensuring consistent asset loading during end-to-end testing regardless of production base paths.
+
+### Fixed
+
+- Fixed layout shifts and skipped items when scrolling backwards past dynamically sized elements by anchoring viewport positions to the first visible row and column during resize remeasurement.
+- Fixed accidental momentum flings caused by soft releases or resting fingers prior to touch release.
+- Fixed race conditions between scrollbar track events and active touch gestures by ignoring track scroll events during touch scrolling or active momentum animations (`handleTrackScroll`).
+- Fixed track drag interruption by stopping running momentum glides immediately on scrollbar track `mousedown`.
+- Fixed stale content artifacts in recycled cell DOM nodes by clearing existing children (`node.innerHTML = ''`) before mounting updated item content.
+
+
 ## [1.0.0-rc2] - 2026-09-21
 
 ### Added
