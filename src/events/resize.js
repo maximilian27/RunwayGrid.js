@@ -54,34 +54,67 @@ export function handleResize(grid, entries) {
 
   const { rowMax, colMax } = grid._measureRenderedSizes();
   if (grid._applyMeasuredSizes(rowMax, colMax)) {
-    if (grid.verticalEnabled) {
-      if (wasAtVEnd) {
-        grid._virtualScrollTop = Math.max(0, grid.registry.get_total_height() - vh);
-      } else if (grid._virtualScrollTop > 0 && anchorRow > 0) {
-        const newAnchorRowOffset = grid.registry.get_row_offset(anchorRow);
-        const rowDelta = newAnchorRowOffset - oldAnchorRowOffset;
-        if (rowDelta !== 0) {
-          const maxScrollV = Math.max(0, grid.registry.get_total_height() - vh);
-          grid._virtualScrollTop = Math.min(Math.max(0, grid._virtualScrollTop + rowDelta), maxScrollV);
+    const prevPending = grid._pendingResizeState;
+    const effectiveWasAtVEnd = prevPending ? (prevPending.wasAtVEnd || wasAtVEnd) : wasAtVEnd;
+    const effectiveWasAtHEnd = prevPending ? (prevPending.wasAtHEnd || wasAtHEnd) : wasAtHEnd;
+    const effectiveAnchorRow = prevPending ? prevPending.anchorRow : anchorRow;
+    const effectiveOldAnchorRowOffset = prevPending ? prevPending.oldAnchorRowOffset : oldAnchorRowOffset;
+    const effectiveAnchorCol = prevPending ? prevPending.anchorCol : anchorCol;
+    const effectiveOldAnchorColOffset = prevPending ? prevPending.oldAnchorColOffset : oldAnchorColOffset;
+    const capturedScrollTop = prevPending ? prevPending.capturedScrollTop : grid._virtualScrollTop;
+    const capturedScrollLeft = prevPending ? prevPending.capturedScrollLeft : grid._virtualScrollLeft;
+
+    grid._pendingResizeState = {
+      wasAtVEnd: effectiveWasAtVEnd,
+      wasAtHEnd: effectiveWasAtHEnd,
+      anchorRow: effectiveAnchorRow,
+      oldAnchorRowOffset: effectiveOldAnchorRowOffset,
+      anchorCol: effectiveAnchorCol,
+      oldAnchorColOffset: effectiveOldAnchorColOffset,
+      capturedScrollTop,
+      capturedScrollLeft,
+    };
+
+    if (grid._resizeRafId) cancelAnimationFrame(grid._resizeRafId);
+    grid._resizeRafId = requestAnimationFrame(() => {
+      grid._resizeRafId = null;
+      const state = grid._pendingResizeState;
+      grid._pendingResizeState = null;
+      if (!grid.isConnected || !grid.registry || !state) return;
+
+      const { width: curVw, height: curVh } = grid._getViewportSize
+        ? grid._getViewportSize()
+        : { width: grid.viewport.clientWidth, height: grid.viewport.clientHeight };
+
+      if (grid.verticalEnabled) {
+        if (state.wasAtVEnd && grid._virtualScrollTop === state.capturedScrollTop) {
+          grid._virtualScrollTop = Math.max(0, grid.registry.get_total_height() - curVh);
+        } else if (grid._virtualScrollTop === state.capturedScrollTop && grid._virtualScrollTop > 0 && state.anchorRow > 0) {
+          const newAnchorRowOffset = grid.registry.get_row_offset(state.anchorRow);
+          const rowDelta = newAnchorRowOffset - state.oldAnchorRowOffset;
+          if (rowDelta !== 0) {
+            const maxScrollV = Math.max(0, grid.registry.get_total_height() - curVh);
+            grid._virtualScrollTop = Math.min(Math.max(0, grid._virtualScrollTop + rowDelta), maxScrollV);
+          }
         }
       }
-    }
 
-    if (grid.horizontalEnabled) {
-      if (wasAtHEnd) {
-        grid._virtualScrollLeft = Math.max(0, grid.registry.get_total_width() - vw);
-      } else if (grid._virtualScrollLeft > 0 && anchorCol > 0) {
-        const newAnchorColOffset = grid.registry.get_col_offset(anchorCol);
-        const colDelta = newAnchorColOffset - oldAnchorColOffset;
-        if (colDelta !== 0) {
-          const maxScrollH = Math.max(0, grid.registry.get_total_width() - vw);
-          grid._virtualScrollLeft = Math.min(Math.max(0, grid._virtualScrollLeft + colDelta), maxScrollH);
+      if (grid.horizontalEnabled) {
+        if (state.wasAtHEnd && grid._virtualScrollLeft === state.capturedScrollLeft) {
+          grid._virtualScrollLeft = Math.max(0, grid.registry.get_total_width() - curVw);
+        } else if (grid._virtualScrollLeft === state.capturedScrollLeft && grid._virtualScrollLeft > 0 && state.anchorCol > 0) {
+          const newAnchorColOffset = grid.registry.get_col_offset(state.anchorCol);
+          const colDelta = newAnchorColOffset - state.oldAnchorColOffset;
+          if (colDelta !== 0) {
+            const maxScrollH = Math.max(0, grid.registry.get_total_width() - curVw);
+            grid._virtualScrollLeft = Math.min(Math.max(0, grid._virtualScrollLeft + colDelta), maxScrollH);
+          }
         }
       }
-    }
 
-    grid.updateSpacer();
-    grid.syncTrackFromVirtual();
-    grid.calculateIndices();
+      grid.updateSpacer();
+      grid.syncTrackFromVirtual();
+      grid.calculateIndices();
+    });
   }
 }

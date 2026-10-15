@@ -106,6 +106,10 @@ export class RunwayGrid extends HTMLElement {
     this.resizeObserver = null;
     /** @type {ResizeObserver|null} */
     this.containerObserver = null;
+    /** @type {number|null} */
+    this._resizeRafId = null;
+    /** @type {object|null} */
+    this._pendingResizeState = null;
     /** @type {EventListener|null} */
     this._handleMouseUp = null;
 
@@ -215,6 +219,11 @@ export class RunwayGrid extends HTMLElement {
       cancelAnimationFrame(this._programmaticScrollRaf);
       this._programmaticScrollRaf = null;
     }
+    if (this._resizeRafId !== null) {
+      cancelAnimationFrame(this._resizeRafId);
+      this._resizeRafId = null;
+    }
+    this._pendingResizeState = null;
     this._isProgrammaticScroll = false;
     this._expectedTrackScrollTop = null;
     this._expectedTrackScrollLeft = null;
@@ -250,6 +259,13 @@ export class RunwayGrid extends HTMLElement {
     }
     if (this.containerObserver) {
       this.containerObserver.observe(this);
+    }
+    if (this.resizeObserver) {
+      for (const rowNodes of this.renderedNodes) {
+        for (const el of rowNodes) {
+          this.resizeObserver.observe(el);
+        }
+      }
     }
     if (this.verticalTrack) this.verticalTrack.scrollTop = 0;
     if (this.horizontalTrack) this.horizontalTrack.scrollLeft = 0;
@@ -300,6 +316,11 @@ export class RunwayGrid extends HTMLElement {
   setupRegistry() {
     if (!this.wasmInitialized) return;
     this._invalidateLayoutCache();
+    if (this._resizeRafId !== null) {
+      cancelAnimationFrame(this._resizeRafId);
+      this._resizeRafId = null;
+    }
+    this._pendingResizeState = null;
 
     if (this.registry) {
       this.registry.free();
@@ -903,6 +924,7 @@ export class RunwayGrid extends HTMLElement {
           el.setAttribute('part', 'cell');
           rowGroup.appendChild(el);
           rowNodes.push(el);
+          if (this.resizeObserver) this.resizeObserver.observe(el);
         }
       }
 
@@ -940,7 +962,6 @@ export class RunwayGrid extends HTMLElement {
           const oldRow = node.getAttribute('data-row');
           const oldCol = node.getAttribute('data-col');
           if (oldRow === String(rowIndex) && oldCol === String(colIndex) && node._renderedVersion === this._renderVersion) {
-            if (this.resizeObserver) this.resizeObserver.observe(node);
             continue;
           }
 
@@ -974,8 +995,6 @@ export class RunwayGrid extends HTMLElement {
               node.appendChild(newContent);
             }
           }
-
-          if (this.resizeObserver) this.resizeObserver.observe(node);
         }
       }
     } catch (err) {
