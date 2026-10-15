@@ -40,7 +40,7 @@ dependencies = [
 
 [[package]]
 name = "runway_engine"
-version = "1.0.0-rc3"
+version = "1.0.0-rc4"
 dependencies = [
  "wasm-bindgen",
 ]
