@@ -45,7 +45,7 @@ export { SAFE_MAX_HEIGHT, SAFE_MAX_SPACER_SIZE, VirtualScrollRegistry };
  */
 export class RunwayGrid extends HTMLElement {
   static get observedAttributes() {
-    return ['orientation', 'row-size', 'col-size', 'buffer-size'];
+    return ['orientation', 'row-size', 'col-size', 'buffer-size', 'momentum-friction', 'momentum-max-speed'];
   }
 
   constructor() {
@@ -128,6 +128,12 @@ export class RunwayGrid extends HTMLElement {
     this._boundTouchEnd = (e) => this._onTouchEnd(e);
     this._boundTouchCancel = (e) => this._onTouchCancel(e);
 
+    // Auto-scroll ("ticker mode") state
+    this._autoScrollRafId = null;
+    this._isAutoScrolling = false;
+    this._autoScrollPaused = false;
+    this._autoScrollSpeed = 1;
+
     // `rangechange` batching: while `_batchDepth > 0`, `calculateIndices()` stores its
     // freshly computed event on `_pendingRangeChangeEvent` instead of dispatching it
     // immediately, so a public method that internally calls `calculateIndices()` several
@@ -200,6 +206,16 @@ export class RunwayGrid extends HTMLElement {
    */
   _bindEvents() {
     bindEvents(this);
+    this.viewport.addEventListener('mouseenter', () => {
+      if (this._isAutoScrolling) {
+        this._autoScrollPaused = true;
+      }
+    });
+    this.viewport.addEventListener('mouseleave', () => {
+      if (this._isAutoScrolling) {
+        this._autoScrollPaused = false;
+      }
+    });
   }
 
   /**
@@ -208,6 +224,7 @@ export class RunwayGrid extends HTMLElement {
    * running momentum animation or drag states to avoid leaking once removed from the DOM.
    */
   disconnectedCallback() {
+    this.stopAutoScroll();
     this._stopMomentum();
     this._detachTouchTargetListeners();
     this._isTouchScrolling = false;
@@ -979,12 +996,11 @@ export class RunwayGrid extends HTMLElement {
             node.setAttribute('aria-posinset', String(posIndex + 1));
             node.setAttribute('aria-setsize', String(setSize));
           }
-          node.innerHTML = '';
 
           const item = this.orientation === 'horizontal'
             ? (this.columnsData ? this.columnsData[colIndex] : (this.rows ? this.rows[colIndex] : undefined))
             : (this.rows ? this.rows[rowIndex] : undefined);
-          const newContent = this.renderItem(item, rowIndex, colIndex, this.rowCount, this.colCount);
+          const newContent = this.renderItem(item, rowIndex, colIndex, this.rowCount, this.colCount, node);
           if (newContent !== undefined) {
             node.innerHTML = '';
             if (typeof newContent === 'string') {
@@ -1127,6 +1143,47 @@ export class RunwayGrid extends HTMLElement {
     }
   }
 
+  /**
+   * Starts native auto-scrolling ("ticker mode") using a requestAnimationFrame
+   * loop feeding into `_scrollByDelta()`.
+   * Automatically pauses on mouseenter/touchstart and resumes on mouseleave/touchend.
+   * Canceled immediately on manual user input (wheel, track scroll).
+   *
+   * @param {number} [speed=1] Pixels to scroll per frame.
+   */
+  startAutoScroll(speed = 1) {
+    this.stopAutoScroll();
+    this._isAutoScrolling = true;
+    this._autoScrollPaused = false;
+    this._autoScrollSpeed = speed;
+
+    const step = () => {
+      if (!this._isAutoScrolling) return;
+      if (!this._autoScrollPaused) {
+        if (this.orientation === 'horizontal') {
+          this._scrollByDelta(this._autoScrollSpeed, 0);
+        } else {
+          this._scrollByDelta(0, this._autoScrollSpeed);
+        }
+      }
+      this._autoScrollRafId = requestAnimationFrame(step);
+    };
+
+    this._autoScrollRafId = requestAnimationFrame(step);
+  }
+
+  /**
+   * Stops the active auto-scroll ticker and cancels its animation frame loop.
+   */
+  stopAutoScroll() {
+    this._isAutoScrolling = false;
+    this._autoScrollPaused = false;
+    if (this._autoScrollRafId !== null) {
+      cancelAnimationFrame(this._autoScrollRafId);
+      this._autoScrollRafId = null;
+    }
+  }
+
   // --- PROPERTIES ---
 
   /**
@@ -1172,6 +1229,20 @@ export class RunwayGrid extends HTMLElement {
   /** @returns {number} Number of extra rows/columns rendered outside the visible viewport, from the `buffer-size` attribute. */
   get bufferSize() { return parseInt(this.getAttribute('buffer-size') || '5', 10); }
   set bufferSize(val) { this.setAttribute('buffer-size', String(val)); }
+
+  /** @returns {number} Touch fling friction deceleration coefficient (default `0.955`). */
+  get momentumFriction() {
+    const val = parseFloat(this.getAttribute('momentum-friction'));
+    return isNaN(val) ? 0.955 : val;
+  }
+  set momentumFriction(val) { this.setAttribute('momentum-friction', String(val)); }
+
+  /** @returns {number} Touch fling maximum speed clamp in px/ms (default `4.0`). */
+  get momentumMaxSpeed() {
+    const val = parseFloat(this.getAttribute('momentum-max-speed'));
+    return isNaN(val) ? 4.0 : val;
+  }
+  set momentumMaxSpeed(val) { this.setAttribute('momentum-max-speed', String(val)); }
 
   /**
    * The row data array.
@@ -1309,8 +1380,8 @@ export class RunwayGrid extends HTMLElement {
   /**
    * Sets the cell rendering function, then immediately re-renders.
    *
-   * @param {(rowItem: unknown, rowIndex: number, colIndex: number, rowCount: number, colCount: number) => (string|Node|number|boolean|null|undefined)} renderFn
-   *   Renders a single cell's content: return an HTML string (assigned via `innerHTML`), a `Node` (appended as-is), or a primitive number/boolean (assigned via `textContent`).
+   * @param {import('./runway-grid.d.ts').RenderItemFunction} renderFn
+   *   Renders a single cell's content: return an HTML string (assigned via `innerHTML`), a `Node` (appended as-is), a primitive number/boolean (assigned via `textContent`), or `undefined` (for in-place view recycling).
    */
   set template(renderFn) { this._renderVersion++; this.renderItem = renderFn; this.calculateIndices(); }
 }

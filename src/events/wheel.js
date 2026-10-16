@@ -17,6 +17,7 @@
  * @param {WheelEvent} e The wheel event.
  */
 export function handleWheel(grid, e) {
+  if (typeof grid.stopAutoScroll === 'function') grid.stopAutoScroll();
   if (!grid.registry) return;
   grid._stopMomentum();
 

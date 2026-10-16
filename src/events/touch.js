@@ -51,6 +51,9 @@ const handledTouchEvents = new WeakSet();
  * @param {TouchEvent} e The touchstart event.
  */
 export function onTouchStart(grid, e) {
+  if (grid._isAutoScrolling) {
+    grid._autoScrollPaused = true;
+  }
   if (!grid.registry) return;
   const hadMomentum = grid._momentumRafId !== null;
   grid._stopMomentum();
@@ -166,6 +169,10 @@ export function onTouchEnd(grid, e) {
   if (handledTouchEvents.has(e)) return;
   handledTouchEvents.add(e);
 
+  if (grid._isAutoScrolling) {
+    grid._autoScrollPaused = false;
+  }
+
   if (!grid._isTouchScrolling) {
     grid._detachTouchTargetListeners();
     return;
@@ -235,6 +242,10 @@ export function onTouchCancel(grid, e) {
   if (e && handledTouchEvents.has(e)) return;
   if (e) handledTouchEvents.add(e);
 
+  if (grid._isAutoScrolling) {
+    grid._autoScrollPaused = false;
+  }
+
   grid._detachTouchTargetListeners();
   grid._isTouchScrolling = false;
   grid._activeTouchId = null;
@@ -271,7 +282,7 @@ export function startMomentum(grid, vx, vy) {
   const speed = Math.hypot(vx, vy);
   if (speed < MIN_FLING_VELOCITY) return;
 
-  const maxSpeed = 3.5;
+  const maxSpeed = typeof grid.momentumMaxSpeed === 'number' ? grid.momentumMaxSpeed : 4.0;
   if (speed > maxSpeed) {
     const scale = maxSpeed / speed;
     vx *= scale;
@@ -279,7 +290,7 @@ export function startMomentum(grid, vx, vy) {
   }
 
   let lastTime = performance.now();
-  const friction = 0.94;
+  const friction = typeof grid.momentumFriction === 'number' ? grid.momentumFriction : 0.955;
 
   const step = () => {
     const now = performance.now();

@@ -60,15 +60,19 @@ export interface WasmErrorEvent extends Event {
  * @param colIndex Zero-based column index of the cell being rendered.
  * @param rowCount Total number of rows currently known to the component.
  * @param colCount Total number of columns currently known to the component.
- * @returns An HTML string (assigned via `innerHTML`), a `Node` (appended as-is), or a primitive number/boolean (assigned via `textContent`).
+ * @param cellNode The native cell DOM element for in-place view recycling.
+ * @returns An HTML string (assigned via `innerHTML`), a `Node` (appended as-is), a primitive number/boolean (assigned via `textContent`), or `undefined` (to keep in-place updates).
  */
-export type RunwayGridTemplate = (
+export type RenderItemFunction = (
   rowItem: unknown,
   rowIndex: number,
   colIndex: number,
   rowCount: number,
   colCount: number,
+  cellNode?: HTMLElement,
 ) => string | Node | number | boolean | null | undefined;
+
+export type RunwayGridTemplate = RenderItemFunction;
 
 /**
  * `<runway-grid>` - a high-performance virtual scroll custom element for
@@ -106,6 +110,24 @@ export declare class RunwayGrid extends HTMLElement {
 
   /** Number of extra rows/columns rendered outside the visible viewport, from the `buffer-size` attribute. */
   bufferSize: number;
+
+  /** Touch fling friction deceleration coefficient (default `0.955`). */
+  momentumFriction: number;
+
+  /** Touch fling maximum speed clamp in px/ms (default `4.0`). */
+  momentumMaxSpeed: number;
+
+  /**
+   * Starts native auto-scrolling ("ticker mode") using a requestAnimationFrame loop.
+   *
+   * @param speed Pixels to scroll per frame (default `1`).
+   */
+  startAutoScroll(speed?: number): void;
+
+  /**
+   * Stops the active auto-scroll ticker and cancels its animation frame loop.
+   */
+  stopAutoScroll(): void;
 
   /** The internal array of row data objects currently loaded. */
   rows: unknown[];
