@@ -45,7 +45,7 @@ export { SAFE_MAX_HEIGHT, SAFE_MAX_SPACER_SIZE, VirtualScrollRegistry };
  */
 export class RunwayGrid extends HTMLElement {
   static get observedAttributes() {
-    return ['orientation', 'row-size', 'col-size', 'buffer-size', 'momentum-friction', 'momentum-max-speed'];
+    return ['orientation', 'row-size', 'col-size', 'buffer-size', 'momentum-friction', 'momentum-max-speed', 'wheel-speed'];
   }
 
   constructor() {
@@ -1230,19 +1230,26 @@ export class RunwayGrid extends HTMLElement {
   get bufferSize() { return parseInt(this.getAttribute('buffer-size') || '5', 10); }
   set bufferSize(val) { this.setAttribute('buffer-size', String(val)); }
 
-  /** @returns {number} Touch fling friction deceleration coefficient (default `0.955`). */
+  /** @returns {number} Touch fling friction deceleration coefficient (default `0.955`, clamped to `[0.50, 0.99]`). */
   get momentumFriction() {
     const val = parseFloat(this.getAttribute('momentum-friction'));
-    return isNaN(val) ? 0.955 : val;
+    return isNaN(val) ? 0.955 : Math.min(0.99, Math.max(0.50, val));
   }
   set momentumFriction(val) { this.setAttribute('momentum-friction', String(val)); }
 
-  /** @returns {number} Touch fling maximum speed clamp in px/ms (default `4.0`). */
+  /** @returns {number} Touch fling maximum speed clamp in px/ms (default `4.0`, clamped to `[0.1, 20.0]`). */
   get momentumMaxSpeed() {
     const val = parseFloat(this.getAttribute('momentum-max-speed'));
-    return isNaN(val) ? 4.0 : val;
+    return isNaN(val) ? 4.0 : Math.min(20.0, Math.max(0.1, val));
   }
   set momentumMaxSpeed(val) { this.setAttribute('momentum-max-speed', String(val)); }
+
+  /** @returns {number} Mouse wheel scroll speed multiplier (default `1.0`, clamped to `[0.1, 10.0]`). */
+  get wheelSpeed() {
+    const val = parseFloat(this.getAttribute('wheel-speed'));
+    return isNaN(val) ? 1.0 : Math.min(10.0, Math.max(0.1, val));
+  }
+  set wheelSpeed(val) { this.setAttribute('wheel-speed', String(val)); }
 
   /**
    * The row data array.

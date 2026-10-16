@@ -34,6 +34,11 @@ export function handleWheel(grid, e) {
     deltaY *= vh;
   }
 
+  // Apply configurable wheel speed multiplier
+  const multiplier = typeof grid.wheelSpeed === 'number' ? grid.wheelSpeed : 1.0;
+  deltaX *= multiplier;
+  deltaY *= multiplier;
+
   let hasRoom = false;
 
   if (grid.verticalEnabled && deltaY !== 0) {

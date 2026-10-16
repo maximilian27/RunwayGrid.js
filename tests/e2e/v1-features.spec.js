@@ -91,6 +91,24 @@ test.describe('1.0.0 Feature Validation', () => {
       const updatedFriction = host.momentumFriction;
       const updatedMaxSpeed = host.momentumMaxSpeed;
 
+      // Defensive clamping: below minimum
+      host.momentumFriction = 0.1; // clamp to 0.50
+      host.momentumMaxSpeed = 0.01; // clamp to 0.1
+      const clampedMinFriction = host.momentumFriction;
+      const clampedMinMaxSpeed = host.momentumMaxSpeed;
+
+      // Defensive clamping: above maximum
+      host.momentumFriction = 1.5; // clamp to 0.99
+      host.momentumMaxSpeed = 50.0; // clamp to 20.0
+      const clampedMaxFriction = host.momentumFriction;
+      const clampedMaxMaxSpeed = host.momentumMaxSpeed;
+
+      // Fallback on invalid NaN
+      host.setAttribute('momentum-friction', 'not-a-number');
+      host.setAttribute('momentum-max-speed', 'not-a-number');
+      const fallbackFriction = host.momentumFriction;
+      const fallbackMaxSpeed = host.momentumMaxSpeed;
+
       return {
         defaultFriction,
         defaultMaxSpeed,
@@ -100,6 +118,12 @@ test.describe('1.0.0 Feature Validation', () => {
         propMaxSpeed,
         updatedFriction,
         updatedMaxSpeed,
+        clampedMinFriction,
+        clampedMinMaxSpeed,
+        clampedMaxFriction,
+        clampedMaxMaxSpeed,
+        fallbackFriction,
+        fallbackMaxSpeed,
       };
     });
 
@@ -111,6 +135,12 @@ test.describe('1.0.0 Feature Validation', () => {
     expect(physics.propMaxSpeed).toBe(5.5);
     expect(physics.updatedFriction).toBe(0.88);
     expect(physics.updatedMaxSpeed).toBe(3.0);
+    expect(physics.clampedMinFriction).toBe(0.50);
+    expect(physics.clampedMinMaxSpeed).toBe(0.1);
+    expect(physics.clampedMaxFriction).toBe(0.99);
+    expect(physics.clampedMaxMaxSpeed).toBe(20.0);
+    expect(physics.fallbackFriction).toBe(0.955);
+    expect(physics.fallbackMaxSpeed).toBe(4.0);
   });
 
   test('auto-scroll ticker mode scrolls automatically, pauses on mouseenter/touchstart, and cancels on wheel/manual track input', async ({ page }) => {
@@ -284,5 +314,83 @@ test.describe('1.0.0 Feature Validation', () => {
     expect(disconnectedResult.runningBefore).toBe(true);
     expect(disconnectedResult.runningAfter).toBe(false);
     expect(disconnectedResult.rafNull).toBe(true);
+  });
+
+  test('wheel speed attribute, property, and event multiplier work correctly', async ({ page }) => {
+    await page.goto('/examples/01-vertical-list.html');
+    await page.waitForFunction(() => {
+      const el = document.getElementById('my-list');
+      return el && el.registry !== null && el.renderedNodes.length > 0;
+    });
+
+    const result = await page.evaluate(() => {
+      const host = document.getElementById('my-list');
+
+      // 1. Defaults and property/attribute reflection
+      const defaultSpeed = host.wheelSpeed;
+
+      host.wheelSpeed = 2.5;
+      const attrSpeed = host.getAttribute('wheel-speed');
+      const propSpeed = host.wheelSpeed;
+
+      host.setAttribute('wheel-speed', '0.5');
+      const updatedPropSpeed = host.wheelSpeed;
+
+      host.setAttribute('wheel-speed', 'invalid');
+      const fallbackSpeed = host.wheelSpeed;
+
+      // Defensive clamping
+      host.wheelSpeed = -5.0; // clamp to 0.1
+      const clampedMinSpeed = host.wheelSpeed;
+
+      host.wheelSpeed = 25.0; // clamp to 10.0
+      const clampedMaxSpeed = host.wheelSpeed;
+
+      // 2. Functional wheel scrolling with multipliers
+      host.scrollToCell(0, 0);
+      const startPos = host._virtualScrollTop;
+
+      // At default speed 1.0
+      host.wheelSpeed = 1.0;
+      host.viewport.dispatchEvent(new WheelEvent('wheel', { deltaY: 50, bubbles: true, cancelable: true }));
+      const posSpeed1 = host._virtualScrollTop;
+
+      // At double speed 2.0
+      host.wheelSpeed = 2.0;
+      host.viewport.dispatchEvent(new WheelEvent('wheel', { deltaY: 50, bubbles: true, cancelable: true }));
+      const posSpeed2 = host._virtualScrollTop;
+
+      // At half speed 0.5
+      host.wheelSpeed = 0.5;
+      host.viewport.dispatchEvent(new WheelEvent('wheel', { deltaY: 50, bubbles: true, cancelable: true }));
+      const posSpeedHalf = host._virtualScrollTop;
+
+      return {
+        defaultSpeed,
+        attrSpeed,
+        propSpeed,
+        updatedPropSpeed,
+        fallbackSpeed,
+        clampedMinSpeed,
+        clampedMaxSpeed,
+        startPos,
+        posSpeed1,
+        posSpeed2,
+        posSpeedHalf,
+      };
+    });
+
+    expect(result.defaultSpeed).toBe(1.0);
+    expect(result.attrSpeed).toBe('2.5');
+    expect(result.propSpeed).toBe(2.5);
+    expect(result.updatedPropSpeed).toBe(0.5);
+    expect(result.fallbackSpeed).toBe(1.0);
+    expect(result.clampedMinSpeed).toBe(0.1);
+    expect(result.clampedMaxSpeed).toBe(10.0);
+
+    expect(result.startPos).toBe(0);
+    expect(result.posSpeed1).toBe(50);
+    expect(result.posSpeed2 - result.posSpeed1).toBe(100); // 50 * 2.0
+    expect(result.posSpeedHalf - result.posSpeed2).toBe(25); // 50 * 0.5
   });
 });

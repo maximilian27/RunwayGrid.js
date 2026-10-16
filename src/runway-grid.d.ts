@@ -111,11 +111,14 @@ export declare class RunwayGrid extends HTMLElement {
   /** Number of extra rows/columns rendered outside the visible viewport, from the `buffer-size` attribute. */
   bufferSize: number;
 
-  /** Touch fling friction deceleration coefficient (default `0.955`). */
+  /** Touch fling friction deceleration coefficient (default `0.955`, clamped to `[0.50, 0.99]`). */
   momentumFriction: number;
 
-  /** Touch fling maximum speed clamp in px/ms (default `4.0`). */
+  /** Touch fling maximum speed clamp in px/ms (default `4.0`, clamped to `[0.1, 20.0]`). */
   momentumMaxSpeed: number;
+
+  /** Mouse wheel scroll speed multiplier (default `1.0`, clamped to `[0.1, 10.0]`). */
+  wheelSpeed: number;
 
   /**
    * Starts native auto-scrolling ("ticker mode") using a requestAnimationFrame loop.
