@@ -36,7 +36,7 @@ import 'runway-grid';
 <script type="module">
   const list = document.getElementById('my-list');
 
-  // Template signature: (rowItem, rowIndex, colIndex, rowCount, colCount)
+  // Template signature: (rowItem, rowIndex, colIndex, rowCount, colCount, cellNode)
   list.template = (item, index) => `<div style="padding: 10px;">${item}</div>`;
 
   // Setting `data` triggers (re)creation of the underlying registry.
@@ -69,44 +69,45 @@ broadly supported in modern evergreen browsers (recent Chrome/Edge/Firefox/Safar
 
 ## Attributes
 
-Attributes are only read once, when the element is constructed/connected (there is no
-`attributeChangedCallback`); changing them afterwards has no clean, consistent effect. In
-practice: `buffer-size` is actually re-read on every scroll/resize, so changing it later does
-take effect on the next render; `row-size`/`col-size` are re-read for keyboard-scroll increments
-and as the default size for newly `appendData`-ed rows/columns, but never retroactively resize
-rows/columns that already exist; changing `orientation` after creation does **not** rebuild the
-underlying registry and will leave it in an inconsistent state. If you need to change any of
-these, recreate the element instead of mutating its attributes in place.
+Attributes configure layout geometry, virtual buffer size, and gesture physics. Physics attributes (`momentum-friction`, `momentum-max-speed`, and `wheel-speed`) are read dynamically during touch flings and wheel events and reflect to their corresponding JavaScript properties.
 
-| Attribute      | Default    | Description                                                                                   |
-|----------------|------------|-----------------------------------------------------------------------------------------------|
-| `orientation`  | `vertical` | One of `vertical`, `horizontal`, or `both`. Controls which axis (or both) is virtualized.      |
-| `row-size`     | `20`       | Initial/estimated row height in pixels, used before a row's real height is auto-measured. Falls back to the legacy `item-size` attribute (deprecated - use `row-size` instead) if `row-size` is absent. |
-| `col-size`     | `100`      | Initial/estimated column width in pixels, used before a column's real width is auto-measured.  |
-| `buffer-size`  | `5`        | Number of extra rows/columns rendered outside the visible viewport, to reduce blank flashes.   |
+| Attribute            | Default    | Description                                                                                   |
+|----------------------|------------|-----------------------------------------------------------------------------------------------|
+| `orientation`        | `vertical` | One of `vertical`, `horizontal`, or `both`. Controls which axis (or both) is virtualized.      |
+| `row-size`           | `20`       | Initial/estimated row height in pixels, used before a row's real height is auto-measured. Falls back to the legacy `item-size` attribute (deprecated - use `row-size` instead) if `row-size` is absent. |
+| `col-size`           | `100`      | Initial/estimated column width in pixels, used before a column's real width is auto-measured.  |
+| `buffer-size`        | `5`        | Number of extra rows/columns rendered outside the visible viewport, to reduce blank flashes.   |
+| `momentum-friction`  | `0.955`    | Touch fling friction deceleration factor. Defensively clamped to `[0.50, 0.99]`.              |
+| `momentum-max-speed` | `4.0`      | Maximum touch fling speed clamp in pixels per millisecond (px/ms). Defensively clamped to `[0.1, 20.0]`. |
+| `wheel-speed`        | `1.0`      | Mouse wheel scroll speed multiplier. Defensively clamped to `[0.1, 10.0]`.                    |
 
 ## Properties
 
-| Property   | Type                                                                 | Description                                                                                                   |
-|------------|-----------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------|
-| `data`             | `Array`                                                                | The row data. Setting it (re)builds the internal layout registry.                                              |
-| `columns`          | `Array \| number`                                                     | The column definitions (or a plain column count). Must be set before `data` when using `horizontal`/`both`.    |
-| `template`         | `(rowItem, rowIndex, colIndex, rowCount, colCount) => string \| Node`  | Renders a cell's content. Returning a `string` sets `innerHTML`; returning a `Node` appends it. **See the "Security: `innerHTML` and XSS" section below.** |
-| `rows`             | `Array` (readonly)                                                     | The row data currently held internally, as set via `data` or grown/shrunk via `appendData`/`removeDataFromHead`. |
-| `columnsData`      | `Array \| null` (readonly)                                            | The column definitions currently held internally (as set via `columns`), or `null` when `columns` was set to a plain count. |
-| `rowCount`         | `number` (readonly)                                                    | Number of rows currently known to the component - the reliable way to read the loaded row count (`rows.length` when the vertical axis is enabled, `1` otherwise). |
-| `colCount`         | `number` (readonly)                                                    | Number of columns currently known to the component - the reliable way to read the loaded column count (`1` when the horizontal axis is disabled). |
-| `wasmInitialized`  | `boolean` (readonly)                                                   | Whether the shared embedded WASM engine finished initializing successfully.                                     |
-| `wasmInitError`    | `unknown` (readonly)                                                   | The error caught while initializing the WASM engine, or `null` if it hasn't failed. Also available as `e.detail.error` on the `wasmerror` event. |
+| Property           | Type                                                                                     | Description                                                                                                   |
+|--------------------|------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------|
+| `data`             | `Array`                                                                                  | The row data. Setting it (re)builds the internal layout registry.                                              |
+| `columns`          | `Array \| number`                                                                        | The column definitions (or a plain column count). Must be set before `data` when using `horizontal`/`both`.    |
+| `template`         | `(rowItem, rowIndex, colIndex, rowCount, colCount, cellNode) => string \| Node \| void` | Renders a cell's content. Returning a `string` sets `innerHTML`; returning a `Node` appends it; returning `undefined` (or omitting return) preserves the existing DOM for zero-GC in-place view recycling. **See "In-Place View Recycling" and "Security: `innerHTML` and XSS" below.** |
+| `rows`             | `Array` (readonly)                                                                       | The row data currently held internally, as set via `data` or grown/shrunk via `appendData`/`removeDataFromHead`. |
+| `columnsData`      | `Array \| null` (readonly)                                                               | The column definitions currently held internally (as set via `columns`), or `null` when `columns` was set to a plain count. |
+| `rowCount`         | `number` (readonly)                                                                      | Number of rows currently known to the component - the reliable way to read the loaded row count (`rows.length` when the vertical axis is enabled, `1` otherwise). |
+| `colCount`         | `number` (readonly)                                                                      | Number of columns currently known to the component - the reliable way to read the loaded column count (`1` when the horizontal axis is disabled). |
+| `momentumFriction` | `number`                                                                                 | Touch fling friction deceleration coefficient (default `0.955`, clamped to `[0.50, 0.99]`). Reflected to `momentum-friction`. |
+| `momentumMaxSpeed` | `number`                                                                                 | Touch fling maximum speed cap in px/ms (default `4.0`, clamped to `[0.1, 20.0]`). Reflected to `momentum-max-speed`. |
+| `wheelSpeed`       | `number`                                                                                 | Mouse wheel scroll speed multiplier (default `1.0`, clamped to `[0.1, 10.0]`). Reflected to `wheel-speed`.    |
+| `wasmInitialized`  | `boolean` (readonly)                                                                     | Whether the shared embedded WASM engine finished initializing successfully.                                   |
+| `wasmInitError`    | `unknown` (readonly)                                                                     | The error caught while initializing the WASM engine, or `null` if it hasn't failed. Also available as `e.detail.error` on the `wasmerror` event. |
 
 ## Methods
 
 | Method                             | Description                                                                                     |
-|-------------------------------------|---------------------------------------------------------------------------------------------------|
-| `scrollToCell(rowIndex, colIndex)`  | Scrolls so that the given row/column cell is visible, snapping precisely.                          |
-| `scrollToIndex(index)`              | Shorthand for `scrollToCell(index, 0)`, for single-axis lists.                                     |
-| `appendData(newItems)`              | Non-destructively appends rows (or columns, for `orientation="horizontal"`), e.g. for infinite scroll, without resetting the scroll position. |
-| `removeDataFromHead(count)`         | Non-destructively drops the first `count` rows (or columns, for `orientation="horizontal"`), e.g. to cap memory usage for a "sliding window" list, counter-scrolling so nothing jumps. |
+|------------------------------------|-------------------------------------------------------------------------------------------------|
+| `scrollToCell(rowIndex, colIndex)` | Scrolls so that the given row/column cell is visible, snapping precisely.                       |
+| `scrollToIndex(index)`             | Shorthand for `scrollToCell(index, 0)`, for single-axis lists.                                  |
+| `appendData(newItems)`             | Non-destructively appends rows (or columns, for `orientation="horizontal"`), e.g. for infinite scroll, without resetting the scroll position. |
+| `removeDataFromHead(count)`        | Non-destructively drops the first `count` rows (or columns, for `orientation="horizontal"`), e.g. to cap memory usage for a "sliding window" list, counter-scrolling so nothing jumps. |
+| `startAutoScroll(speed = 1)`       | Starts native auto-scrolling ("ticker mode") at the given speed (pixels per animation frame; negative for reverse). Pauses on hover (`mouseenter`) and touch (`touchstart`), resumes on `mouseleave`/`touchend`/`touchcancel`, and cancels immediately on user manual wheel or scrollbar track dragging. |
+| `stopAutoScroll()`                 | Cancels active auto-scrolling and stops the animation frame loop. Automatically invoked on `disconnectedCallback`. |
 
 ## Events
 
@@ -114,6 +115,66 @@ these, recreate the element instead of mutating its attributes in place.
 |---------------|-------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `rangechange` | `e.buffered`, `e.viewport`                | Fired whenever the rendered range changes. `buffered` (`{ startRow, endRow, startCol, endCol }`) includes the off-screen buffer; `viewport` is the strict on-screen range. Both are exposed directly on the event, not under `e.detail`. |
 | `wasmerror`   | `e.detail.error`                          | Fired if the embedded WASM engine fails to initialize (unsupported browser, CSP blocking `atob`-decoded binary instantiation, corrupt/incompatible build, etc.). The component never renders in this case; without a listener the failure would otherwise be an unhandled promise rejection with no visible fallback. See "Error handling" below. |
+
+## In-Place View Recycling (Zero-GC Rendering)
+
+By default, returning an HTML string or DOM node replaces `cell.innerHTML` on every virtual scroll render step. While simple, constantly wiping `innerHTML` and creating new elements triggers browser garbage collection churn and destroys framework component views (e.g., Angular embedded views, React roots, Vue templates, or Web Components), which can cause visual text flicker during rapid touch swipes.
+
+To achieve zero-GC rendering, `template` passes the existing cell DOM element as its 6th parameter (`cellNode`). If your render function mutates `cellNode` directly (or updates an existing component instance hosted within it) and returns `undefined`, `<runway-grid>` preserves the cell's DOM structure without wiping `innerHTML`:
+
+```js
+grid.template = (item, rowIndex, colIndex, rowCount, colCount, cellNode) => {
+  // First mount: instantiate cell DOM structure once
+  if (!cellNode.firstElementChild) {
+    cellNode.innerHTML = `<span class="cell-label"></span>`;
+  }
+
+  // Recycling pass: update content in-place with zero DOM allocation
+  cellNode.firstElementChild.textContent = item.title;
+
+  // Returning undefined tells runway-grid that the DOM was updated in-place
+  return undefined;
+};
+```
+
+## Auto-Scroll ("Ticker Mode")
+
+`<runway-grid>` provides native auto-scrolling for dashboards, live feeds, activity streams, stock tickers, or digital signage displays:
+
+```js
+// Scroll forward at 1.5px per animation frame
+grid.startAutoScroll(1.5);
+
+// Scroll backward at 2px per animation frame
+grid.startAutoScroll(-2);
+
+// Stop auto-scrolling
+grid.stopAutoScroll();
+```
+
+### Ergonomic interaction controls
+
+- **Hover pause:** Pauses scrolling when the mouse enters the viewport (`mouseenter`), and automatically resumes when it leaves (`mouseleave`).
+- **Touch pause:** Pauses scrolling when a user places a finger on the viewport (`touchstart`), and resumes on `touchend` or `touchcancel`.
+- **Manual override cancellation:** If a user scrolls manually using the mouse wheel or drags a scrollbar track, auto-scrolling is immediately cancelled so it never fights user input.
+- **Lifecycle cleanup:** When `<runway-grid>` is disconnected from the DOM, running ticker loops are automatically terminated to prevent memory and animation loop leaks.
+
+## Scroll Physics & Multipliers
+
+Scrolling responsiveness and inertia can be customized to match device ergonomics or design requirements:
+
+- **Touch momentum friction (`momentum-friction` / `momentumFriction`):** Friction deceleration factor for touch fling gestures (default `0.955`). Defensively clamped to `[0.50, 0.99]` (`0.50` provides rapid braking; `0.99` provides an extended inertial glide; values outside this range are safely clamped to avoid infinite glide loops or negative velocity errors).
+- **Touch maximum speed (`momentum-max-speed` / `momentumMaxSpeed`):** Maximum velocity cap for touch flings in pixels per millisecond (default `4.0`). Defensively clamped to `[0.1, 20.0]` to prevent single-frame layout jumps across hundreds of thousands of pixels.
+- **Mouse wheel multiplier (`wheel-speed` / `wheelSpeed`):** Multiplier applied to mouse wheel scroll deltas (default `1.0`). Defensively clamped to `[0.1, 10.0]` to prevent accidental direction inversion or locked scrolling.
+
+```html
+<runway-grid
+  orientation="vertical"
+  momentum-friction="0.96"
+  momentum-max-speed="5.0"
+  wheel-speed="1.2"
+></runway-grid>
+```
 
 ## Error handling
 
@@ -152,8 +213,7 @@ runs interpolated data-derived strings through it before interpolating them into
 string. When `rowItem` (or any derived value) may contain untrusted content, either:
 
 - Escape it before interpolating (e.g. replace `&`, `<`, `>`, `"`, `'` with their HTML entities), or
-- Avoid `innerHTML` entirely: build and return a `Node`/`DocumentFragment` instead, setting
-  untrusted text via `textContent` (which is never parsed as HTML).
+- Avoid `innerHTML` entirely: build and return a `Node`/`DocumentFragment` instead, or use in-place view recycling (`return undefined`) and set untrusted text via `textContent` (which is never parsed as HTML).
 
 ## Accessibility
 
