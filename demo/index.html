@@ -28,6 +28,7 @@
     <a href="examples/05-infinite-horizontal.html">5. Infinite (horizontal)</a>
     <a href="examples/06-sliding-vertical.html">6. Sliding window (vertical)</a>
     <a href="examples/07-sliding-horizontal.html">7. Sliding window (horizontal)</a>
+    <a href="examples/08-autoscroll-telemetry.html">8. Telemetry log (auto-scroll)</a>
   </nav>
   <button class="theme-toggle" type="button" aria-label="Toggle color theme">Theme</button>
 </header>
@@ -143,6 +144,11 @@
       <h3>Sliding window (horizontal)</h3>
       <p>Same memory-capping idea as example 6, along the column axis.</p>
     </a>
+    <a class="card" href="examples/08-autoscroll-telemetry.html">
+      <span class="card-num">EXAMPLE 8</span>
+      <h3>Telemetry log (auto-scroll)</h3>
+      <p>Continuous vertical ticker stream with hover/touch pause and interactive speed controls.</p>
+    </a>
   </div>
 
   <h2>Attributes</h2>
@@ -166,6 +172,9 @@
       <tr><td><code>row-size</code></td><td><code>20</code></td><td>Initial/estimated row height in pixels, used before a row's real height is auto-measured. Falls back to the legacy <code>item-size</code> attribute (deprecated - use <code>row-size</code> instead) if <code>row-size</code> is absent.</td></tr>
       <tr><td><code>col-size</code></td><td><code>100</code></td><td>Initial/estimated column width in pixels, used before a column's real width is auto-measured.</td></tr>
       <tr><td><code>buffer-size</code></td><td><code>5</code></td><td>Number of extra rows/columns rendered outside the visible viewport, to reduce blank flashes.</td></tr>
+      <tr><td><code>momentum-friction</code></td><td><code>0.955</code></td><td>Touch fling friction deceleration factor. Defensively clamped to <code>[0.50, 0.99]</code>.</td></tr>
+      <tr><td><code>momentum-max-speed</code></td><td><code>4.0</code></td><td>Maximum touch fling speed cap in px/ms. Defensively clamped to <code>[0.1, 20.0]</code>.</td></tr>
+      <tr><td><code>wheel-speed</code></td><td><code>1.0</code></td><td>Mouse wheel scroll speed multiplier. Defensively clamped to <code>[0.1, 10.0]</code>.</td></tr>
     </tbody>
   </table>
 
@@ -177,11 +186,14 @@
     <tbody>
       <tr><td><code>data</code></td><td><code>Array</code></td><td>The row data. Setting it (re)builds the internal layout registry.</td></tr>
       <tr><td><code>columns</code></td><td><code>Array | number</code></td><td>The column definitions (or a plain column count). Must be set before <code>data</code> when using <code>horizontal</code>/<code>both</code>.</td></tr>
-      <tr><td><code>template</code></td><td><code>(rowItem, rowIndex, colIndex, rowCount, colCount) =&gt; string | Node</code></td><td>Renders a cell's content. Returning a <code>string</code> sets <code>innerHTML</code>; returning a <code>Node</code> appends it. See the "Security" section below.</td></tr>
+      <tr><td><code>template</code></td><td><code>(rowItem, rowIndex, colIndex, rowCount, colCount, cellNode) =&gt; string | Node | void</code></td><td>Renders a cell's content. Returning a <code>string</code> sets <code>innerHTML</code>; returning a <code>Node</code> appends it; returning <code>undefined</code> enables zero-GC in-place DOM recycling.</td></tr>
       <tr><td><code>rows</code> <em>(readonly)</em></td><td><code>Array</code></td><td>The row data currently held internally, as set via <code>data</code> or grown/shrunk via <code>appendData</code>/<code>removeDataFromHead</code>.</td></tr>
       <tr><td><code>columnsData</code> <em>(readonly)</em></td><td><code>Array | null</code></td><td>The column definitions currently held internally (as set via <code>columns</code>), or <code>null</code> when <code>columns</code> was set to a plain count.</td></tr>
       <tr><td><code>rowCount</code> <em>(readonly)</em></td><td><code>number</code></td><td>Number of rows currently known to the component - the reliable way to read the loaded row count (<code>rows.length</code> when the vertical axis is enabled, <code>1</code> otherwise).</td></tr>
       <tr><td><code>colCount</code> <em>(readonly)</em></td><td><code>number</code></td><td>Number of columns currently known to the component - the reliable way to read the loaded column count (<code>1</code> when the horizontal axis is disabled).</td></tr>
+      <tr><td><code>momentumFriction</code></td><td><code>number</code></td><td>Touch fling friction deceleration coefficient (clamped to <code>[0.50, 0.99]</code>).</td></tr>
+      <tr><td><code>momentumMaxSpeed</code></td><td><code>number</code></td><td>Touch fling maximum velocity cap in px/ms (clamped to <code>[0.1, 20.0]</code>).</td></tr>
+      <tr><td><code>wheelSpeed</code></td><td><code>number</code></td><td>Mouse wheel scroll speed multiplier (clamped to <code>[0.1, 10.0]</code>).</td></tr>
       <tr><td><code>wasmInitialized</code> <em>(readonly)</em></td><td><code>boolean</code></td><td>Whether the shared embedded WASM engine finished initializing successfully.</td></tr>
       <tr><td><code>wasmInitError</code> <em>(readonly)</em></td><td><code>unknown</code></td><td>The error caught while initializing the WASM engine, or <code>null</code> if it hasn't failed. Also available as <code>e.detail.error</code> on the <code>wasmerror</code> event.</td></tr>
     </tbody>
@@ -197,6 +209,8 @@
       <tr><td><code>scrollToIndex(index)</code></td><td>Shorthand for <code>scrollToCell(index, 0)</code>, for single-axis lists.</td></tr>
       <tr><td><code>appendData(newItems)</code></td><td>Non-destructively appends rows (or columns, for <code>orientation="horizontal"</code>), e.g. for infinite scroll, without resetting the scroll position. See examples 4 and 5.</td></tr>
       <tr><td><code>removeDataFromHead(count)</code></td><td>Non-destructively drops the first <code>count</code> rows (or columns, for <code>orientation="horizontal"</code>), e.g. to cap memory usage for a "sliding window" list, counter-scrolling so nothing jumps. See examples 6 and 7.</td></tr>
+      <tr><td><code>startAutoScroll(speed = 1)</code></td><td>Starts native auto-scrolling ("ticker mode") at the given speed (px per animation frame; negative for reverse). Pauses on hover/touch and cancels on manual wheel or track drag. See example 8.</td></tr>
+      <tr><td><code>stopAutoScroll()</code></td><td>Cancels active auto-scrolling and stops the animation frame loop.</td></tr>
     </tbody>
   </table>
 

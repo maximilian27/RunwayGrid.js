@@ -17,6 +17,7 @@
  * @param {WheelEvent} e The wheel event.
  */
 export function handleWheel(grid, e) {
+  if (typeof grid.stopAutoScroll === 'function') grid.stopAutoScroll();
   if (!grid.registry) return;
   grid._stopMomentum();
 
@@ -32,6 +33,11 @@ export function handleWheel(grid, e) {
     deltaX *= vw;
     deltaY *= vh;
   }
+
+  // Apply configurable wheel speed multiplier
+  const multiplier = typeof grid.wheelSpeed === 'number' ? grid.wheelSpeed : 1.0;
+  deltaX *= multiplier;
+  deltaY *= multiplier;
 
   let hasRoom = false;
 

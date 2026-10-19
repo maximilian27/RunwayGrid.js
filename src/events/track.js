@@ -44,6 +44,7 @@ export function handleTrackScroll(grid, axis) {
     return;
   }
 
+  if (typeof grid.stopAutoScroll === 'function') grid.stopAutoScroll();
   grid._stopMomentum();
 
   const {width: vw, height: vh} = grid._getViewportSize ? grid._getViewportSize() : {

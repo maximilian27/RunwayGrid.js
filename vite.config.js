@@ -25,6 +25,7 @@ export default defineConfig({
         example05: page('examples/05-infinite-horizontal.html'),
         example06: page('examples/06-sliding-vertical.html'),
         example07: page('examples/07-sliding-horizontal.html'),
+        example08: page('examples/08-autoscroll-telemetry.html'),
       },
     },
   },

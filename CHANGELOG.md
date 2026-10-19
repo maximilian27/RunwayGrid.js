@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.0.0-rc5] - 2026-10-16
+
+### Added
+
+- Native auto-scroll ("ticker mode"): added public `startAutoScroll(speed = 1)` and `stopAutoScroll()` methods driven by a `requestAnimationFrame` loop that feeds into `_scrollByDelta()`.
+- Interactive ticker controls: auto-scroll automatically pauses on `mouseenter` / `touchstart`, resumes on `mouseleave` / `touchend` / `touchcancel`, and cancels immediately upon manual user input (`wheel` and scrollbar track scrolling).
+- Configurable touch momentum physics: exposed `momentum-friction` (default `0.955`, clamped to `[0.50, 0.99]`) and `momentum-max-speed` (default `4.0`, clamped to `[0.1, 20.0]`) as observed HTML attributes and property getters/setters on `<runway-grid>`.
+- Configurable mouse wheel speed: exposed `wheel-speed` (default `1.0`, clamped to `[0.1, 10.0]`) as an observed HTML attribute and property getter/setter on `<runway-grid>`, applying a configurable multiplier to wheel delta scroll movements.
+- Defensive physics safety bounds: added automatic clamping to `momentumFriction` (`[0.50, 0.99]`), `momentumMaxSpeed` (`[0.1, 20.0]`), and `wheelSpeed` (`[0.1, 10.0]`) with NaN/invalid fallback defaults, preventing infinite glide loops, single-frame catapult layout jumps, and inverted or locked scrolling gestures from invalid attribute input.
+- In-place view recycling (zero-GC rendering): `applyChanges` passes the native cell `node` as the 6th parameter (`cellNode`) to `renderItem`. When `renderItem` returns `undefined`, the grid assumes the consumer updated the DOM in-place and skips wiping `innerHTML`, preventing template recreation and visual flicker in framework wrappers.
+- TypeScript definition updates: updated `RenderItemFunction` to accept `cellNode?: HTMLElement` and return `undefined`, and declared `momentumFriction`, `momentumMaxSpeed`, `wheelSpeed`, `startAutoScroll`, and `stopAutoScroll` on `RunwayGrid`.
+- End-to-end test suite (`tests/e2e/v1-features.spec.js`) covering view recycling, momentum configuration, ticker auto-scroll behavior, pause/resume on hover/touch, and manual cancellation.
+
+### Changed
+
+- Updated `startMomentum` in `src/events/touch.js` to read `momentumFriction` and `momentumMaxSpeed` dynamically from the grid instance rather than using fixed constants.
+- Updated `handleWheel` in `src/events/wheel.js` to apply `grid.wheelSpeed` multiplier to wheel delta movements.
+- Updated cell rendering in `src/runway-grid.js` to only clear `innerHTML` when `renderItem` returns a defined value (`string`, `Node`, `number`, `boolean`, or `null`).
+- Updated `disconnectedCallback` in `src/runway-grid.js` to automatically stop any running auto-scroll ticker when `<runway-grid>` is removed from the DOM.
+
 ## [1.0.0-rc4] - 2206-10-15
 
 ### Fixed
