@@ -14,7 +14,7 @@
  * @param {'vertical'|'horizontal'} axis Which track fired the scroll event.
  */
 export function handleTrackScroll(grid, axis) {
-  if (grid._isUpdatingDOM || grid._isTouchScrolling || grid._momentumRafId !== null) return;
+  if (grid._isUpdatingDOM || grid._isTouchScrolling || grid._momentumRafId !== null || grid._smoothScrollRafId !== null) return;
 
   const track = axis === 'vertical' ? grid.verticalTrack : grid.horizontalTrack;
   const scrollPos = Math.max(0, axis === 'vertical' ? track.scrollTop : track.scrollLeft);

@@ -63,4 +63,149 @@ test.describe('runway-grid - jump to index after a prior scroll', () => {
     expect(targetBox.y).toBeGreaterThanOrEqual(viewportBox.y - 1);
     expect(targetBox.y).toBeLessThan(viewportBox.y + viewportBox.height);
   });
+
+  test('scrollToIndex with behavior: smooth animates across frames and settles at target', async ({ page }) => {
+    const TARGET = 5000;
+
+    // Start smooth scrolling and record progress positions
+    const positions = await page.evaluate(async (index) => {
+      const host = document.getElementById('my-list');
+      const sampled = [];
+      const timer = setInterval(() => {
+        sampled.push(host._virtualScrollTop);
+      }, 30);
+
+      await host.scrollToIndex(index, { behavior: 'smooth', duration: 350 });
+      clearInterval(timer);
+      sampled.push(host._virtualScrollTop);
+      return sampled;
+    }, TARGET);
+
+    // Verify that multiple intermediate frames were rendered and position monotonically increased
+    expect(positions.length).toBeGreaterThanOrEqual(4);
+    expect(positions[0]).toBeLessThan(positions[positions.length - 1]);
+
+    // Target row must be rendered and visible in the viewport
+    const viewport = page.locator('#my-list .runway-grid__viewport');
+    const targetNode = page.locator(`#my-list [data-row="${TARGET}"]`);
+    await expect(targetNode).toBeAttached();
+
+    const viewportBox = await viewport.boundingBox();
+    const targetBox = await targetNode.boundingBox();
+    expect(viewportBox).not.toBeNull();
+    expect(targetBox).not.toBeNull();
+    expect(targetBox.y).toBeGreaterThanOrEqual(viewportBox.y - 1);
+    expect(targetBox.y).toBeLessThan(viewportBox.y + viewportBox.height);
+  });
+
+  test('Jump to Index demo button smoothly animates to target index', async ({ page }) => {
+    const indexInput = page.locator('#index-input');
+    await indexInput.fill('2500');
+
+    const jumpBtn = page.locator('#jump-btn');
+    await jumpBtn.click();
+
+    const targetNode = page.locator('#my-list [data-row="2500"]');
+    await expect(targetNode).toBeAttached({ timeout: 5000 });
+
+    const viewport = page.locator('#my-list .runway-grid__viewport');
+    const viewportBox = await viewport.boundingBox();
+    const targetBox = await targetNode.boundingBox();
+    expect(viewportBox).not.toBeNull();
+    expect(targetBox).not.toBeNull();
+    expect(targetBox.y).toBeGreaterThanOrEqual(viewportBox.y - 1);
+    expect(targetBox.y).toBeLessThan(viewportBox.y + viewportBox.height);
+  });
+
+  test('smooth scroll cancels immediately on user manual wheel interaction', async ({ page }) => {
+    // Start a long smooth scroll towards row 50,000 (target ~1,000,000px)
+    await page.evaluate(() => {
+      const host = document.getElementById('my-list');
+      host.scrollToIndex(50000, { behavior: 'smooth', duration: 3000 });
+    });
+
+    // Verify animation RAF is active
+    await page.waitForFunction(() => document.getElementById('my-list')._smoothScrollRafId !== null);
+
+    // Simulate user wheel gesture interrupting the animation
+    await page.locator('#my-list .runway-grid__viewport').hover();
+    await page.mouse.wheel(0, 50);
+
+    // The animation RAF must be cancelled immediately
+    const isRunningAfter = await page.evaluate(() => document.getElementById('my-list')._smoothScrollRafId !== null);
+    expect(isRunningAfter).toBe(false);
+
+    const posAtCancel = await page.evaluate(() => document.getElementById('my-list')._virtualScrollTop);
+
+    // Wait 300ms: position should stay near posAtCancel and not continue advancing to 50000 (~1,000,000px)
+    await page.waitForTimeout(300);
+    const finalPos = await page.evaluate(() => document.getElementById('my-list')._virtualScrollTop);
+    expect(finalPos).toBeLessThan(900000);
+    expect(Math.abs(finalPos - posAtCancel)).toBeLessThan(500);
+  });
+
+  test('scroll-behavior="smooth" attribute enables smooth scrolling by default', async ({ page }) => {
+    const behavior = await page.evaluate(() => {
+      const host = document.getElementById('my-list');
+      host.setAttribute('scroll-behavior', 'smooth');
+      return host.scrollBehavior;
+    });
+    expect(behavior).toBe('smooth');
+
+    const positions = await page.evaluate(async () => {
+      const host = document.getElementById('my-list');
+      const sampled = [];
+      const timer = setInterval(() => {
+        sampled.push(host._virtualScrollTop);
+      }, 30);
+
+      await host.scrollToIndex(3000);
+      clearInterval(timer);
+      sampled.push(host._virtualScrollTop);
+      return sampled;
+    });
+
+    expect(positions.length).toBeGreaterThanOrEqual(3);
+    const targetNode = page.locator('#my-list [data-row="3000"]');
+    await expect(targetNode).toBeAttached();
+  });
+});
+
+test.describe('runway-grid - horizontal smooth jump to index', () => {
+  test('horizontal scrollToCell with behavior: smooth animates and settles at target column', async ({ page }) => {
+    await page.goto('/examples/03-horizontal-list.html');
+    await page.waitForFunction(() => {
+      const el = document.getElementById('h-list');
+      return el && el.registry !== null && el.renderedNodes.length > 0;
+    });
+
+    const TARGET_COL = 400;
+
+    const positions = await page.evaluate(async (col) => {
+      const host = document.getElementById('h-list');
+      const sampled = [];
+      const timer = setInterval(() => {
+        sampled.push(host._virtualScrollLeft);
+      }, 30);
+
+      await host.scrollToCell(0, col, { behavior: 'smooth', duration: 350 });
+      clearInterval(timer);
+      sampled.push(host._virtualScrollLeft);
+      return sampled;
+    }, TARGET_COL);
+
+    expect(positions.length).toBeGreaterThanOrEqual(4);
+    expect(positions[0]).toBeLessThan(positions[positions.length - 1]);
+
+    const targetNode = page.locator(`#h-list [data-col="${TARGET_COL}"]`);
+    await expect(targetNode).toBeAttached();
+
+    const viewport = page.locator('#h-list .runway-grid__viewport');
+    const viewportBox = await viewport.boundingBox();
+    const targetBox = await targetNode.boundingBox();
+    expect(viewportBox).not.toBeNull();
+    expect(targetBox).not.toBeNull();
+    expect(targetBox.x).toBeGreaterThanOrEqual(viewportBox.x - 1);
+    expect(targetBox.x).toBeLessThan(viewportBox.x + viewportBox.width);
+  });
 });

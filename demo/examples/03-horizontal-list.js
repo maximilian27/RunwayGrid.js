@@ -45,15 +45,15 @@ hList.template = (rowItem, rowIndex, colIndex, rowCount, colCount) => {
 
 hJumpBtn.addEventListener('click', () => {
   const targetIndex = Number(hIndexInput.value);
-  hList.scrollToCell(0, targetIndex);
+  hList.scrollToCell(0, targetIndex, { behavior: 'smooth' });
 });
 
 hStartBtn.addEventListener('click', () => {
-  hList.scrollToCell(0, 0);
+  hList.scrollToCell(0, 0, { behavior: 'smooth' });
 });
 
 hEndBtn.addEventListener('click', () => {
-  hList.scrollToCell(0, HORIZONTAL_COUNT - 1);
+  hList.scrollToCell(0, HORIZONTAL_COUNT - 1, { behavior: 'smooth' });
 });
 
 hList.addEventListener('rangechange', (e) => {

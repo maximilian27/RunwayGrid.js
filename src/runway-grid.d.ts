@@ -75,6 +75,29 @@ export type RenderItemFunction = (
 export type RunwayGridTemplate = RenderItemFunction;
 
 /**
+ * Options for programmatic scrolling.
+ */
+export interface ScrollOptions {
+  /**
+   * Scroll behavior: `'smooth'` for an animated transition, `'auto'` or `'instant'` for an immediate jump.
+   * Defaults to `'auto'` (or the element's `scrollBehavior` / `scroll-behavior` attribute if set).
+   */
+  behavior?: 'auto' | 'smooth' | 'instant';
+
+  /**
+   * Duration of the smooth scroll animation in milliseconds.
+   * If omitted, dynamically calculated based on scroll distance.
+   */
+  duration?: number;
+
+  /**
+   * Custom easing function mapping progress [0, 1] to eased value [0, 1].
+   * Defaults to cubic ease-in-out (`easeInOutCubic`).
+   */
+  easing?: (t: number) => number;
+}
+
+/**
  * `<runway-grid>` - a high-performance virtual scroll custom element for
  * rendering very large lists and 2D grids (millions of rows/columns) while
  * keeping the DOM small. Layout math is powered by a Rust/WebAssembly engine
@@ -196,21 +219,33 @@ export declare class RunwayGrid extends HTMLElement {
   set template(renderFn: RunwayGridTemplate);
 
   /**
+   * Default scroll behavior for programmatic scrolling (`'auto'` or `'smooth'`).
+   * Reflects to the `scroll-behavior` attribute.
+   */
+  scrollBehavior: 'auto' | 'smooth';
+
+  /**
    * Scrolls so that the given row/column cell is visible, snapping precisely
-   * to its final measured position.
+   * to its final measured position. Supports smooth animated scrolling via
+   * `options.behavior = 'smooth'`.
    *
    * @param rowIndex Zero-based row index to scroll to.
    * @param colIndex Zero-based column index to scroll to (default `0`).
+   * @param options Optional scrolling configuration or behavior (`'auto'` or `'smooth'`).
+   * @returns A promise that resolves when scrolling has completed.
    */
-  scrollToCell(rowIndex: number, colIndex?: number): void;
+  scrollToCell(rowIndex: number, colIndex?: number, options?: ScrollOptions | 'auto' | 'smooth' | 'instant'): Promise<void>;
+  scrollToCell(rowIndex: number, options?: ScrollOptions | 'auto' | 'smooth' | 'instant'): Promise<void>;
 
   /**
-   * Shorthand for `scrollToCell(index, 0)`, for single-axis (vertical or
-   * horizontal) lists.
+   * Shorthand for `scrollToCell(index, 0, options)` (vertical) or `scrollToCell(0, index, options)`
+   * (horizontal), for single-axis lists.
    *
    * @param index Zero-based row (vertical) or column (horizontal) index to scroll to.
+   * @param options Optional scrolling configuration or behavior (`'auto'` or `'smooth'`).
+   * @returns A promise that resolves when scrolling has completed.
    */
-  scrollToIndex(index: number): void;
+  scrollToIndex(index: number, options?: ScrollOptions | 'auto' | 'smooth' | 'instant'): Promise<void>;
 
   addEventListener<K extends keyof HTMLElementEventMap>(
     type: K,

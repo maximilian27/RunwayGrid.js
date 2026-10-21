@@ -45,7 +45,7 @@ export { SAFE_MAX_HEIGHT, SAFE_MAX_SPACER_SIZE, VirtualScrollRegistry };
  */
 export class RunwayGrid extends HTMLElement {
   static get observedAttributes() {
-    return ['orientation', 'row-size', 'col-size', 'buffer-size', 'momentum-friction', 'momentum-max-speed', 'wheel-speed'];
+    return ['orientation', 'row-size', 'col-size', 'buffer-size', 'momentum-friction', 'momentum-max-speed', 'wheel-speed', 'scroll-behavior'];
   }
 
   constructor() {
@@ -133,6 +133,10 @@ export class RunwayGrid extends HTMLElement {
     this._isAutoScrolling = false;
     this._autoScrollPaused = false;
     this._autoScrollSpeed = 1;
+
+    // Smooth scrolling animation state
+    this._smoothScrollRafId = null;
+    this._smoothScrollResolve = null;
 
     // `rangechange` batching: while `_batchDepth > 0`, `calculateIndices()` stores its
     // freshly computed event on `_pendingRangeChangeEvent` instead of dispatching it
@@ -226,6 +230,7 @@ export class RunwayGrid extends HTMLElement {
   disconnectedCallback() {
     this.stopAutoScroll();
     this._stopMomentum();
+    this._stopSmoothScroll();
     this._detachTouchTargetListeners();
     this._isTouchScrolling = false;
     this._activeTouchId = null;
@@ -562,7 +567,24 @@ export class RunwayGrid extends HTMLElement {
    * @private
    */
   _stopMomentum() {
+    this._stopSmoothScroll();
     stopMomentum(this);
+  }
+
+  /**
+   * Cancels any running smooth scroll animation and resolves pending promises.
+   * @private
+   */
+  _stopSmoothScroll() {
+    if (this._smoothScrollRafId !== null) {
+      cancelAnimationFrame(this._smoothScrollRafId);
+      this._smoothScrollRafId = null;
+    }
+    if (this._smoothScrollResolve) {
+      const resolve = this._smoothScrollResolve;
+      this._smoothScrollResolve = null;
+      resolve();
+    }
   }
 
   /**
@@ -1096,19 +1118,12 @@ export class RunwayGrid extends HTMLElement {
   }
 
   /**
-   * Scrolls so that the given row/column cell is visible, snapping precisely
-   * to its final measured position.
-   *
-   * @param {number} rowIndex Zero-based row index to scroll to.
-   * @param {number} [colIndex=0] Zero-based column index to scroll to.
+   * Snaps precisely to the target cell's final measured position, refining against
+   * freshly measured sizes and settling at boundaries.
+   * @private
    */
-  scrollToCell(rowIndex, colIndex = 0) {
+  _settleFinalPosition(rowIndex, colIndex, vh, vw) {
     if (!this.registry) return;
-    this._stopMomentum();
-    const { width: vw, height: vh } = this._getViewportSize();
-    rowIndex = Math.max(0, Math.min(this.rowCount - 1, Math.floor(rowIndex)));
-    colIndex = Math.max(0, Math.min(this.colCount - 1, Math.floor(colIndex)));
-
     const position = () => {
       if (this.verticalEnabled) this._virtualScrollTop = this._clamp(this.registry.get_row_offset(rowIndex), 0, this.registry.get_total_height() - vh);
       if (this.horizontalEnabled) this._virtualScrollLeft = this._clamp(this.registry.get_col_offset(colIndex), 0, this.registry.get_total_width() - vw);
@@ -1140,16 +1155,121 @@ export class RunwayGrid extends HTMLElement {
   }
 
   /**
-   * Shorthand for `scrollToCell(index, 0)` (vertical) or `scrollToCell(0, index)`
+   * Scrolls so that the given row/column cell is visible, snapping precisely
+   * to its final measured position. Supports smooth animated scrolling via
+   * `options.behavior = 'smooth'`.
+   *
+   * @param {number} rowIndex Zero-based row index to scroll to.
+   * @param {number|any} [colIndex=0] Zero-based column index to scroll to, or options object when column index is omitted.
+   * @param {any} [options={}] Scrolling options (`{ behavior, duration, easing }`) or behavior string (`'auto'|'smooth'`).
+   * @returns {Promise<void>}
+   */
+  scrollToCell(rowIndex, colIndex = 0, options = {}) {
+    let targetCol = typeof colIndex === 'number' ? colIndex : 0;
+    /** @type {any} */
+    let opts = options;
+    if (typeof colIndex === 'object' && colIndex !== null) {
+      opts = colIndex;
+      targetCol = 0;
+    }
+    if (typeof opts === 'string') {
+      opts = { behavior: opts };
+    } else if (typeof opts === 'boolean') {
+      opts = { behavior: opts ? 'smooth' : 'auto' };
+    }
+    opts = opts || {};
+
+    if (!this.registry) return Promise.resolve();
+    this._stopMomentum();
+    this._stopSmoothScroll();
+
+    const { width: vw, height: vh } = this._getViewportSize();
+    rowIndex = Math.max(0, Math.min(this.rowCount - 1, Math.floor(rowIndex)));
+    const targetColClamped = Math.max(0, Math.min(this.colCount - 1, Math.floor(targetCol)));
+
+    const behavior = opts.behavior || this.scrollBehavior || 'auto';
+    const isSmooth = behavior === 'smooth';
+
+    if (!isSmooth) {
+      this._settleFinalPosition(rowIndex, targetColClamped, vh, vw);
+      return Promise.resolve();
+    }
+
+    return new Promise((resolve) => {
+      const startV = this._virtualScrollTop;
+      const startH = this._virtualScrollLeft;
+
+      const initialTargetV = this.verticalEnabled ? this._clamp(this.registry.get_row_offset(rowIndex), 0, this.registry.get_total_height() - vh) : 0;
+      const initialTargetH = this.horizontalEnabled ? this._clamp(this.registry.get_col_offset(targetColClamped), 0, this.registry.get_total_width() - vw) : 0;
+
+      const distance = Math.hypot(initialTargetV - startV, initialTargetH - startH);
+
+      const defaultEasing = (t) => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+      const easing = typeof opts.easing === 'function' ? opts.easing : defaultEasing;
+
+      const defaultDuration = Math.min(600, Math.max(250, Math.round(200 + Math.log10(Math.max(1, distance)) * 60)));
+      const duration = typeof opts.duration === 'number' && opts.duration >= 0 ? opts.duration : defaultDuration;
+
+      if (distance < 1 || duration === 0) {
+        this._settleFinalPosition(rowIndex, targetColClamped, vh, vw);
+        resolve();
+        return;
+      }
+
+      const startTime = performance.now();
+      this._smoothScrollResolve = resolve;
+
+      const step = () => {
+        const now = performance.now();
+        const elapsed = now - startTime;
+        const progress = Math.min(1, elapsed / duration);
+        const eased = easing(progress);
+
+        if (progress < 1) {
+          const currentTargetV = this.verticalEnabled
+            ? this._clamp(this.registry.get_row_offset(rowIndex), 0, this.registry.get_total_height() - vh)
+            : 0;
+          const currentTargetH = this.horizontalEnabled
+            ? this._clamp(this.registry.get_col_offset(targetColClamped), 0, this.registry.get_total_width() - vw)
+            : 0;
+
+          if (this.verticalEnabled) {
+            this._virtualScrollTop = startV + (currentTargetV - startV) * eased;
+          }
+          if (this.horizontalEnabled) {
+            this._virtualScrollLeft = startH + (currentTargetH - startH) * eased;
+          }
+
+          this.calculateIndices();
+          this.updateSpacer();
+          this.syncTrackFromVirtual();
+
+          this._smoothScrollRafId = requestAnimationFrame(step);
+        } else {
+          this._smoothScrollRafId = null;
+          this._smoothScrollResolve = null;
+          this._settleFinalPosition(rowIndex, targetColClamped, vh, vw);
+          resolve();
+        }
+      };
+
+      this._smoothScrollRafId = requestAnimationFrame(step);
+    });
+  }
+
+  /**
+   * Shorthand for `scrollToCell(index, 0, options)` (vertical) or `scrollToCell(0, index, options)`
    * (horizontal), for single-axis lists.
    *
    * @param {number} index Zero-based row (vertical) or column (horizontal) index to scroll to.
+   * @param {object|string} [options={}] Scrolling options (`{ behavior, duration, easing }`) or behavior string (`'auto'|'smooth'`).
+   * @returns {Promise<void>}
    */
-  scrollToIndex(index) {
+  scrollToIndex(index, options = {}) {
     if (this.orientation === 'horizontal') {
-      this.scrollToCell(0, index);
+      return this.scrollToCell(0, index, options);
     } else {
-      this.scrollToCell(index, 0);
+      return this.scrollToCell(index, 0, options);
     }
   }
 
@@ -1162,6 +1282,7 @@ export class RunwayGrid extends HTMLElement {
    * @param {number} [speed=1] Pixels to scroll per frame.
    */
   startAutoScroll(speed = 1) {
+    this._stopSmoothScroll();
     this.stopAutoScroll();
     this._isAutoScrolling = true;
     this._autoScrollPaused = false;
@@ -1186,6 +1307,7 @@ export class RunwayGrid extends HTMLElement {
    * Stops the active auto-scroll ticker and cancels its animation frame loop.
    */
   stopAutoScroll() {
+    this._stopSmoothScroll();
     this._isAutoScrolling = false;
     this._autoScrollPaused = false;
     if (this._autoScrollRafId !== null) {
@@ -1205,6 +1327,16 @@ export class RunwayGrid extends HTMLElement {
   set orientation(val) {
     if (val) this.setAttribute('orientation', val);
     else this.removeAttribute('orientation');
+  }
+
+  /** @returns {'auto'|'smooth'} Default scroll behavior for programmatic scrolling. */
+  get scrollBehavior() {
+    const v = this.getAttribute('scroll-behavior');
+    return v === 'smooth' ? 'smooth' : 'auto';
+  }
+  set scrollBehavior(val) {
+    if (val === 'smooth') this.setAttribute('scroll-behavior', 'smooth');
+    else this.removeAttribute('scroll-behavior');
   }
 
   /** @returns {boolean} Whether the vertical (row) axis is virtualized. */
