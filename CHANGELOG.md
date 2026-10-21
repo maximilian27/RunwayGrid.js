@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.0.0] - 2026-10-19
+
+### Fixed
+
+- Fixed render cache poisoning on uncaught cell template errors in `applyChanges`: isolated `renderItem` execution in a localized `try/catch` block and deferred `_renderedVersion`, `data-row`, and `data-col` metadata stamping until rendering completes without throwing. Prevents unhandled exceptions on dirty data from breaking adjacent visible viewport cells or permanently caching broken nodes.
+
 ## [1.0.0-rc5] - 2026-10-16
 
 ### Added
@@ -25,7 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Updated cell rendering in `src/runway-grid.js` to only clear `innerHTML` when `renderItem` returns a defined value (`string`, `Node`, `number`, `boolean`, or `null`).
 - Updated `disconnectedCallback` in `src/runway-grid.js` to automatically stop any running auto-scroll ticker when `<runway-grid>` is removed from the DOM.
 
-## [1.0.0-rc4] - 2206-10-15
+## [1.0.0-rc4] - 2026-10-15
 
 ### Fixed
 

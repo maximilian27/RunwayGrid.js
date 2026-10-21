@@ -982,9 +982,6 @@ export class RunwayGrid extends HTMLElement {
             continue;
           }
 
-          node._renderedVersion = this._renderVersion;
-          node.setAttribute('data-row', rowIndex);
-          node.setAttribute('data-col', colIndex);
           if (isGrid) {
             node.setAttribute('role', 'gridcell');
             node.setAttribute('aria-rowindex', String(rowIndex + 1));
@@ -1000,16 +997,29 @@ export class RunwayGrid extends HTMLElement {
           const item = this.orientation === 'horizontal'
             ? (this.columnsData ? this.columnsData[colIndex] : (this.rows ? this.rows[colIndex] : undefined))
             : (this.rows ? this.rows[rowIndex] : undefined);
-          const newContent = this.renderItem(item, rowIndex, colIndex, this.rowCount, this.colCount, node);
-          if (newContent !== undefined) {
-            node.innerHTML = '';
-            if (typeof newContent === 'string') {
-              node.innerHTML = newContent;
-            } else if (typeof newContent === 'number' || typeof newContent === 'boolean') {
-              node.textContent = String(newContent);
-            } else if (newContent instanceof Node) {
-              node.appendChild(newContent);
+
+          try {
+            const newContent = this.renderItem(item, rowIndex, colIndex, this.rowCount, this.colCount, node);
+            if (newContent !== undefined) {
+              node.innerHTML = '';
+              if (typeof newContent === 'string') {
+                node.innerHTML = newContent;
+              } else if (typeof newContent === 'number' || typeof newContent === 'boolean') {
+                node.textContent = String(newContent);
+              } else if (newContent instanceof Node) {
+                node.appendChild(newContent);
+              }
             }
+
+            // ONLY stamp the cache key and coordinates after render completes without throwing
+            node._renderedVersion = this._renderVersion;
+            node.setAttribute('data-row', rowIndex);
+            node.setAttribute('data-col', colIndex);
+          } catch (err) {
+            console.error(`[runway-grid] Error rendering cell at [row ${rowIndex}, col ${colIndex}]:`, err);
+            node._renderedVersion = undefined;
+            node.removeAttribute('data-row');
+            node.removeAttribute('data-col');
           }
         }
       }

@@ -393,4 +393,65 @@ test.describe('1.0.0 Feature Validation', () => {
     expect(result.posSpeed2 - result.posSpeed1).toBe(100); // 50 * 2.0
     expect(result.posSpeedHalf - result.posSpeed2).toBe(25); // 50 * 0.5
   });
+
+  test('isolated render error handling prevents cache poisoning and recovers gracefully', async ({ page }) => {
+    await page.goto('/examples/01-vertical-list.html');
+    await page.waitForFunction(() => {
+      const el = document.getElementById('my-list');
+      return el && el.registry !== null && el.renderedNodes.length > 0;
+    });
+
+    const result = await page.evaluate(async () => {
+      const host = document.getElementById('my-list');
+
+      // Set items where item at row 1 is missing required nested property
+      const testItems = [
+        { id: 0, user: { name: 'Alice' } },
+        { id: 1, user: null }, // triggers TypeError on user.name
+        { id: 2, user: { name: 'Charlie' } },
+        { id: 3, user: { name: 'Dave' } },
+      ];
+
+      // Capture console.error in page context
+      const errors = [];
+      const origError = console.error;
+      console.error = (...args) => errors.push(args.join(' '));
+
+      host.template = (item) => `<div>User: ${item.user.name}</div>`;
+      host.data = testItems;
+      await new Promise(r => requestAnimationFrame(r));
+
+      // Check rendered nodes in DOM
+      const cell0 = host.shadowRoot.querySelector('[data-row="0"]');
+      const cell2 = host.shadowRoot.querySelector('[data-row="2"]');
+      const cell1Tagged = host.shadowRoot.querySelector('[data-row="1"]');
+
+      const text0 = cell0 ? cell0.textContent : null;
+      const text2 = cell2 ? cell2.textContent : null;
+
+      // Now fix item at row 1 and re-render
+      testItems[1].user = { name: 'Bob' };
+      host.data = [...testItems];
+      await new Promise(r => requestAnimationFrame(r));
+
+      const cell1Fixed = host.shadowRoot.querySelector('[data-row="1"]');
+      const text1Fixed = cell1Fixed ? cell1Fixed.textContent : null;
+
+      console.error = origError;
+
+      return {
+        text0,
+        text2,
+        cell1TaggedBeforeFix: cell1Tagged !== null,
+        text1Fixed,
+        errorLogged: errors.some(e => e.includes('Error rendering cell at [row 1, col 0]'))
+      };
+    });
+
+    expect(result.text0).toContain('Alice');
+    expect(result.text2).toContain('Charlie');
+    expect(result.cell1TaggedBeforeFix).toBe(false);
+    expect(result.text1Fixed).toContain('Bob');
+    expect(result.errorLogged).toBe(true);
+  });
 });
