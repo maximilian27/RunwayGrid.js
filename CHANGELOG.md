@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.0.0] - 2026-10-19
+
+### Added
+
+- Smooth animated jump-to-index / jump-to-cell: `scrollToIndex(index, options)` and `scrollToCell(rowIndex, colIndex, options)` now accept an optional `options` parameter (`{ behavior: 'smooth' | 'auto' | 'instant', duration?: number, easing?: (t: number) => number }`) or behavior string (`'smooth' | 'auto'`), returning a `Promise<void>` that resolves when the target position has been reached and settled.
+- Configurable default scroll behavior: added `scroll-behavior` observed HTML attribute and `scrollBehavior` property (`'auto' | 'smooth'`) on `<runway-grid>`.
+- Dynamic coordinate refinement during smooth scrolling: animation frames smoothly adjust target scroll positions as variable row heights and column widths are dynamically measured, settling precisely on the target cell.
+- Input cancellation: smooth scroll animations automatically cancel immediately upon user manual input (`wheel`, `touchstart`, scrollbar track dragging, or keyboard navigation) and on element disconnection.
+
+### Fixed
+
+- Fixed render cache poisoning on uncaught cell template errors in `applyChanges`: isolated `renderItem` execution in a localized `try/catch` block and deferred `_renderedVersion`, `data-row`, and `data-col` metadata stamping until rendering completes without throwing. Prevents unhandled exceptions on dirty data from breaking adjacent visible viewport cells or permanently caching broken nodes.
+
 ## [1.0.0-rc5] - 2026-10-16
 
 ### Added
@@ -25,7 +38,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Updated cell rendering in `src/runway-grid.js` to only clear `innerHTML` when `renderItem` returns a defined value (`string`, `Node`, `number`, `boolean`, or `null`).
 - Updated `disconnectedCallback` in `src/runway-grid.js` to automatically stop any running auto-scroll ticker when `<runway-grid>` is removed from the DOM.
 
-## [1.0.0-rc4] - 2206-10-15
+## [1.0.0-rc4] - 2026-10-15
 
 ### Fixed
 

@@ -80,6 +80,7 @@ Attributes configure layout geometry, virtual buffer size, and gesture physics. 
 | `momentum-friction`  | `0.955`    | Touch fling friction deceleration factor. Defensively clamped to `[0.50, 0.99]`.              |
 | `momentum-max-speed` | `4.0`      | Maximum touch fling speed clamp in pixels per millisecond (px/ms). Defensively clamped to `[0.1, 20.0]`. |
 | `wheel-speed`        | `1.0`      | Mouse wheel scroll speed multiplier. Defensively clamped to `[0.1, 10.0]`.                    |
+| `scroll-behavior`    | `auto`     | Default programmatic scroll behavior: `auto` (instant jump) or `smooth` (animated transition). |
 
 ## Properties
 
@@ -95,16 +96,17 @@ Attributes configure layout geometry, virtual buffer size, and gesture physics. 
 | `momentumFriction` | `number`                                                                                 | Touch fling friction deceleration coefficient (default `0.955`, clamped to `[0.50, 0.99]`). Reflected to `momentum-friction`. |
 | `momentumMaxSpeed` | `number`                                                                                 | Touch fling maximum speed cap in px/ms (default `4.0`, clamped to `[0.1, 20.0]`). Reflected to `momentum-max-speed`. |
 | `wheelSpeed`       | `number`                                                                                 | Mouse wheel scroll speed multiplier (default `1.0`, clamped to `[0.1, 10.0]`). Reflected to `wheel-speed`.    |
+| `scrollBehavior`   | `'auto' \| 'smooth'`                                                                     | Default scroll behavior for programmatic scrolling (default `'auto'`). Reflected to `scroll-behavior`.         |
 | `wasmInitialized`  | `boolean` (readonly)                                                                     | Whether the shared embedded WASM engine finished initializing successfully.                                   |
 | `wasmInitError`    | `unknown` (readonly)                                                                     | The error caught while initializing the WASM engine, or `null` if it hasn't failed. Also available as `e.detail.error` on the `wasmerror` event. |
 
 ## Methods
 
-| Method                             | Description                                                                                     |
-|------------------------------------|-------------------------------------------------------------------------------------------------|
-| `scrollToCell(rowIndex, colIndex)` | Scrolls so that the given row/column cell is visible, snapping precisely.                       |
-| `scrollToIndex(index)`             | Shorthand for `scrollToCell(index, 0)`, for single-axis lists.                                  |
-| `appendData(newItems)`             | Non-destructively appends rows (or columns, for `orientation="horizontal"`), e.g. for infinite scroll, without resetting the scroll position. |
+| Method                                      | Description                                                                                     |
+|---------------------------------------------|-------------------------------------------------------------------------------------------------|
+| `scrollToCell(rowIndex, colIndex, options)` | Scrolls so that the given row/column cell is visible, snapping precisely. Supports smooth animation via `options.behavior = 'smooth'`. |
+| `scrollToIndex(index, options)`             | Shorthand for `scrollToCell(index, 0, options)`, for single-axis lists.                         |
+| `appendData(newItems)`                      | Non-destructively appends rows (or columns, for `orientation="horizontal"`), e.g. for infinite scroll, without resetting the scroll position. |
 | `removeDataFromHead(count)`        | Non-destructively drops the first `count` rows (or columns, for `orientation="horizontal"`), e.g. to cap memory usage for a "sliding window" list, counter-scrolling so nothing jumps. |
 | `startAutoScroll(speed = 1)`       | Starts native auto-scrolling ("ticker mode") at the given speed (pixels per animation frame; negative for reverse). Pauses on hover (`mouseenter`) and touch (`touchstart`), resumes on `mouseleave`/`touchend`/`touchcancel`, and cancels immediately on user manual wheel or scrollbar track dragging. |
 | `stopAutoScroll()`                 | Cancels active auto-scrolling and stops the animation frame loop. Automatically invoked on `disconnectedCallback`. |
@@ -175,6 +177,33 @@ Scrolling responsiveness and inertia can be customized to match device ergonomic
   wheel-speed="1.2"
 ></runway-grid>
 ```
+
+## Smooth Scrolling & Jump Animation
+
+`<runway-grid>` supports animated smooth scrolling when jumping to an index or cell:
+
+```js
+// Smooth animated scroll to row 50,000
+grid.scrollToIndex(50000, { behavior: 'smooth' });
+
+// Or specify custom duration (in ms) and easing function:
+grid.scrollToIndex(50000, {
+  behavior: 'smooth',
+  duration: 400,
+  easing: (t) => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2,
+});
+
+// Await completion
+await grid.scrollToIndex(50000, { behavior: 'smooth' });
+```
+
+You can also enable smooth scrolling by default using the `scroll-behavior` attribute or property:
+
+```html
+<runway-grid orientation="vertical" scroll-behavior="smooth"></runway-grid>
+```
+
+Smooth scroll animations dynamically refine their landing coordinates as variable item heights are measured during the animation, ensuring exact alignment at the target cell. If interrupted by user input (mouse wheel, touch gesture, scrollbar drag, or keyboard navigation), the animation immediately cancels and yields to the user's gesture.
 
 ## Error handling
 

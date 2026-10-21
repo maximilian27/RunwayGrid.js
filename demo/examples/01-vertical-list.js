@@ -73,15 +73,15 @@ virtualScroll.data = mockData;
 // Hook up the control listeners to test scrollToIndex
 jumpBtn.addEventListener('click', () => {
   const targetIndex = Number(indexInput.value);
-  virtualScroll.scrollToIndex(targetIndex);
+  virtualScroll.scrollToIndex(targetIndex, { behavior: 'smooth' });
 });
 
 startBtn.addEventListener('click', () => {
-  virtualScroll.scrollToIndex(0);
+  virtualScroll.scrollToIndex(0, { behavior: 'smooth' });
 });
 
 endBtn.addEventListener('click', () => {
-  virtualScroll.scrollToIndex(mockData.length - 1);
+  virtualScroll.scrollToIndex(mockData.length - 1, { behavior: 'smooth' });
 });
 
 // Listen to the range changes

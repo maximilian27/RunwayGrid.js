@@ -86,7 +86,7 @@
       <tr><td><code>buffer-size</code></td><td><code>5</code> extra rows rendered outside the viewport on each side.</td></tr>
       <tr><td><code>template</code></td><td>Renders one of three row layouts depending on <code>index</code>.</td></tr>
       <tr><td><code>data</code></td><td>Bound to a 1,000,000-item mock array.</td></tr>
-      <tr><td><code>scrollToIndex(index)</code></td><td>Used by the Jump/Top/End buttons.</td></tr>
+      <tr><td><code>scrollToIndex(index, options)</code></td><td>Used by the Jump/Top/End buttons with <code>{ behavior: 'smooth' }</code>.</td></tr>
       <tr><td><code>rangechange</code></td><td>Logged to the console with both <code>e.buffered</code> and <code>e.viewport</code>.</td></tr>
     </tbody>
   </table>

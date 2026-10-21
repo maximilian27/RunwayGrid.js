@@ -36,11 +36,11 @@ gridDemo.template = (rowItem, rowIndex, colIndex, rowCount, colCount) => {
 gridDemo.data = gridRows;
 
 document.getElementById('grid-top-left-btn').addEventListener('click', () => {
-  gridDemo.scrollToCell(0, 0);
+  gridDemo.scrollToCell(0, 0, { behavior: 'smooth' });
 });
 
 document.getElementById('grid-bottom-right-btn').addEventListener('click', () => {
-  gridDemo.scrollToCell(GRID_ROWS - 1, GRID_COLS - 1);
+  gridDemo.scrollToCell(GRID_ROWS - 1, GRID_COLS - 1, { behavior: 'smooth' });
 });
 
 gridDemo.addEventListener('rangechange', (e) => {

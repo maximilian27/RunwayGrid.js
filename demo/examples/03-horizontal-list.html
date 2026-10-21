@@ -91,7 +91,7 @@
       <tr><td><code>columns</code></td><td>Set to a 5,000-entry array, before <code>data</code>, to drive <code>colCount</code>.</td></tr>
       <tr><td><code>data</code></td><td>Set to a single-entry placeholder array (<code>[null]</code>) - required to trigger registry setup.</td></tr>
       <tr><td><code>template</code></td><td>Ignores <code>rowItem</code>; renders a chip based on <code>colIndex</code> alone.</td></tr>
-      <tr><td><code>scrollToCell(0, colIndex)</code></td><td>Used by the Jump/Start/End buttons (row is always <code>0</code>).</td></tr>
+      <tr><td><code>scrollToCell(0, colIndex, options)</code></td><td>Used by the Jump/Start/End buttons with <code>{ behavior: 'smooth' }</code> (row is always <code>0</code>).</td></tr>
       <tr><td><code>rangechange</code></td><td>Logs <code>e.buffered.startCol</code>/<code>endCol</code> and the <code>viewport</code> equivalents.</td></tr>
     </tbody>
   </table>
