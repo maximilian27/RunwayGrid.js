@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.0.1] - 2026-10-25
+
+### Added
+
+- **Approach Runway Teleportation for Distant Smooth Scrolls**: Implemented distance-aware approach runway teleportation in `scrollToCell` and `scrollToIndex`. When the target cell is more than 5 viewports away, the virtual scroll position jumps immediately to an approach runway 1–2 viewports ahead of the destination and smoothly animates only the final arrival into the target cell. This eliminates thousands of intermediate DOM node allocations and recycling passes, avoids redundant ResizeObserver invocations, and prevents layout estimation drift across unrendered items while preserving the visual sensation of directional motion.
+- Comprehensive end-to-end test suites:
+  - `tests/e2e/fenwick-scale.spec.js`: Validates sub-millisecond burst remeasurement performance and dropped-frame prevention across 1,000,000 dynamic-height rows.
+  - `tests/e2e/scroll-to-index.spec.js`: Asserts approach runway teleportation behavior, non-traversal of intermediate rows during distant smooth scrolls, seamless near-range smooth scrolls, and symmetrical reverse-direction scrolling.
+
+### Changed
+
+- **Fenwick Tree Layout Engine Migration**: Replaced flat linear prefix-sum arrays in the Rust/WebAssembly layout engine (`runway_engine`) with a Fenwick tree (Binary Indexed Tree) structure (`Fenwick`, storing `tree` and `sizes`). Converted layout size updates (`update_size`) from an $O(N)$ suffix-sum walk into an $O(\log N)$ point update (~1.4 µs per update at 10M rows vs ~6.8 ms linear), eliminating layout thrashing and maximizing aggregate CPU efficiency during scroll-driven remeasurement.
+- Updated `resolve_axis` binary search in `runway_engine` to query Fenwick prefix sums directly during range resolution without requiring auxiliary prefix-sum allocations.
+- Recompiled and updated the embedded WebAssembly layout engine artifact in `src/runway-engine-wasm.js`.
+
+### Fixed
+
+- Fixed frame drops, sluggish scrolling, and animation stuttering across unmeasured dynamic-height rows at large scale (1M–10M rows) caused by $O(N)$ linear prefix-sum recalculations on ResizeObserver measurements.
+
 ## [1.0.0] - 2026-10-19
 
 ### Added
