@@ -1,6 +1,6 @@
 # runway-grid
 
-A high-performance virtual scroll `<runway-grid>` custom element for rendering very large lists and 2D grids (millions of rows/columns) while keeping the DOM small. The layout math is powered by a Rust/WebAssembly engine (`runway_engine`), compiled and embedded directly into the published JavaScript - no separate `.wasm` file to host or fetch.
+A high-performance virtual scroll `<runway-grid>` custom element for rendering very large lists and 2D grids (millions to 100M+ rows/columns) while keeping the DOM small. The layout math is powered by a Rust/WebAssembly engine (`runway_engine`), compiled and embedded directly into the published JavaScript - no separate `.wasm` file to host or fetch. Engineered with safe max spacer architecture to completely bypass native browser element height limits.
 
 Supports:
 - Vertical lists (single column, variable row heights)
@@ -117,6 +117,38 @@ Attributes configure layout geometry, virtual buffer size, and gesture physics. 
 |---------------|-------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `rangechange` | `e.buffered`, `e.viewport`                | Fired whenever the rendered range changes. `buffered` (`{ startRow, endRow, startCol, endCol }`) includes the off-screen buffer; `viewport` is the strict on-screen range. Both are exposed directly on the event, not under `e.detail`. |
 | `wasmerror`   | `e.detail.error`                          | Fired if the embedded WASM engine fails to initialize (unsupported browser, CSP blocking `atob`-decoded binary instantiation, corrupt/incompatible build, etc.). The component never renders in this case; without a listener the failure would otherwise be an unhandled promise rejection with no visible fallback. See "Error handling" below. |
+
+## Constants
+
+Exported constants from `runway-grid`:
+
+| Constant | Value | Description |
+|---|---|---|
+| `SAFE_MAX_SPACER_SIZE` | `10000000` | Upper bound (in pixels) applied to scrollbar spacer elements (`10,000,000px`). Capping spacer dimensions keeps every track well within browser element size limits while preserving high-precision scroll mapping. |
+| `SAFE_MAX_HEIGHT` | `10000000` | Backward-compatible alias for `SAFE_MAX_SPACER_SIZE` (single-axis vertical nomenclature). |
+
+## Bypassing Browser Height Limits at 100M+ Scale
+
+Most virtual scrolling libraries break down when lists reach $\approx 1$ to $2$ million rows. This failure is not caused by JavaScript memory exhaustion, but by a fundamental browser rendering engine limitation:
+
+- **Chromium / WebKit:** Hard CSS element dimension cap of $\approx 33,554,400\text{px}$ ($2^{25}\text{px}$). At a typical row height of 30px, standard virtual lists fail, clip, or freeze at $\approx 1,118,000$ rows.
+- **Gecko (Firefox):** Hard CSS element dimension cap of $\approx 17,895,697\text{px}$. At 30px/row, standard virtual lists fail at $\approx 596,000$ rows.
+
+Traditional virtual scrollers rely on a giant "phantom" spacer element whose physical CSS height matches `rowCount * rowHeight`. Once the total dataset height exceeds the browser's maximum element size, the browser silently clamps the spacer element. As a result, scrollbar thumb tracking collapses, scrolling past the threshold becomes impossible, and the remainder of the dataset is unreachable.
+
+### How RunwayGrid Solves This
+
+RunwayGrid completely decouples layout coordinate math from native DOM element limits:
+
+1. **64-Bit Floating-Point Virtual Geometry:** The embedded Rust/WebAssembly layout engine (`runway_engine`) tracks row and column offsets using 64-bit floats (`f64`). A dataset of 100,000,000 rows with an estimated height of 20px represents a virtual span of $2,000,000,000\text{px}$—calculated with full 64-bit precision without allocating DOM geometry.
+2. **Capped Native Scrollbar Spacer (`SAFE_MAX_SPACER_SIZE`):** The DOM spacer elements inside the custom scrollbar tracks never exceed `SAFE_MAX_SPACER_SIZE` (`10,000,000px`). This stays comfortably below all browser clamping thresholds while providing ample physical runway for high-precision scrollbar thumb travel.
+3. **Proportional Coordinate Translation:** RunwayGrid bidirectionally translates scrollbar thumb travel to the unbounded virtual coordinate space:
+   $$\text{virtualScroll} = \frac{\text{trackScroll}}{\text{maxTrackScroll}} \times \text{maxVirtualScroll}$$
+   $$\text{trackScroll} = \frac{\text{virtualScroll}}{\text{maxVirtualScroll}} \times \text{maxTrackScroll}$$
+   When total content size is below `SAFE_MAX_SPACER_SIZE`, coordinates map 1:1 with native pixels. When content exceeds `SAFE_MAX_SPACER_SIZE`, the mapping scales proportionally without loss of precision.
+4. **Transform-Based Viewport Rendering:** The visible viewport mounts only a recycled pool of $\approx 30$ DOM elements positioned via `transform: translate3d(translateX, translateY, 0)`. The viewport never relies on native spacer dimensions to position visible cells.
+
+As demonstrated in the [100,000,000-row vertical list demo](./demo/examples/01-vertical-list.html), you can navigate datasets with billions of virtual pixels smoothly, accurately, and without layout artifacts.
 
 ## In-Place View Recycling (Zero-GC Rendering)
 

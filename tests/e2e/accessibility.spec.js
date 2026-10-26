@@ -35,7 +35,7 @@ test.describe('runway-grid - accessibility (ARIA roles/counts) and rangechange b
     expect(info.viewportHasGridCounts).toBe(false);
     expect(info.cellRole).toBe('listitem');
     expect(info.posinset).toBe('1');
-    expect(info.setsize).toBe('1000000');
+    expect(info.setsize).toBe('100000000');
     // The per-row wrapper element must stay transparent to assistive tech between the
     // `list` and its `listitem`s.
     expect(info.rowGroupRole).toBe('presentation');

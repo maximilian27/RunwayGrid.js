@@ -139,8 +139,15 @@ test.describe('runway-grid - jump to index after a prior scroll', () => {
 
     // Wait 300ms: position should stay near posAtCancel and not continue advancing to 50000 (~1,000,000px)
     await page.waitForTimeout(300);
-    const finalPos = await page.evaluate(() => document.getElementById('my-list')._virtualScrollTop);
-    expect(finalPos).toBeLessThan(900000);
+    const { finalPos, targetOffset } = await page.evaluate(() => {
+      const host = document.getElementById('my-list');
+      const vh = host.viewport.clientHeight;
+      return {
+        finalPos: host._virtualScrollTop,
+        targetOffset: host._clamp(host.registry.get_row_offset(50000), 0, host.registry.get_total_height() - vh),
+      };
+    });
+    expect(finalPos).toBeLessThan(targetOffset);
     expect(Math.abs(finalPos - posAtCancel)).toBeLessThan(500);
   });
 
@@ -167,6 +174,129 @@ test.describe('runway-grid - jump to index after a prior scroll', () => {
 
     expect(positions.length).toBeGreaterThanOrEqual(3);
     const targetNode = page.locator('#my-list [data-row="3000"]');
+    await expect(targetNode).toBeAttached();
+  });
+
+  test('approach runway teleportation jumps distant smooth scroll to 1-2 viewports ahead of target without traversing intermediate items', async ({ page }) => {
+    const TARGET = 10000;
+    const INTERMEDIATE_ROW = 5000;
+
+    const result = await page.evaluate(async ({ target, intermediate }) => {
+      const host = document.getElementById('my-list');
+      const vh = host.viewport.clientHeight;
+
+      const ranges = [];
+      const onRangeChange = (e) => {
+        ranges.push({ start: e.buffered.startRow, end: e.buffered.endRow });
+      };
+      host.addEventListener('rangechange', onRangeChange);
+
+      const sampledPositions = [];
+      const initialEstimatedOffset = host._clamp(host.registry.get_row_offset(target), 0, host.registry.get_total_height() - vh);
+
+      const timer = setInterval(() => {
+        sampledPositions.push(host._virtualScrollTop);
+      }, 25);
+
+      // Trigger distant smooth scroll
+      await host.scrollToIndex(target, { behavior: 'smooth', duration: 350 });
+
+      clearInterval(timer);
+      host.removeEventListener('rangechange', onRangeChange);
+
+      const finalVirtualTop = host._virtualScrollTop;
+      const targetOffset = host._clamp(host.registry.get_row_offset(target), 0, host.registry.get_total_height() - vh);
+
+      // Check if intermediate row was ever included in any rendered buffered range
+      const touchedIntermediate = ranges.some((r) => intermediate >= r.start && intermediate <= r.end);
+
+      return {
+        sampledPositions,
+        touchedIntermediate,
+        initialEstimatedOffset,
+        firstSampled: sampledPositions[0],
+        finalVirtualTop,
+        targetOffset,
+        vh,
+      };
+    }, { target: TARGET, intermediate: INTERMEDIATE_ROW });
+
+    // The intermediate row (5000) was never mounted or traversed
+    expect(result.touchedIntermediate).toBe(false);
+
+    // The scroll position immediately jumped to the approach runway (within 2 viewports of estimated target)
+    // rather than linearly crawling from 0
+    expect(result.firstSampled).toBeGreaterThan(150000);
+    expect(result.firstSampled).toBeCloseTo(result.initialEstimatedOffset - 2 * result.vh, -2);
+    expect(result.finalVirtualTop).toBeCloseTo(result.targetOffset, 0);
+
+    // Target node is rendered and visible
+    const targetNode = page.locator(`#my-list [data-row="${TARGET}"]`);
+    await expect(targetNode).toBeAttached();
+  });
+
+  test('smooth scroll to nearby target (<= 5 viewports) animates smoothly without teleportation', async ({ page }) => {
+    const TARGET = 5; // Close to top, well within 5 viewports
+
+    const result = await page.evaluate(async (target) => {
+      const host = document.getElementById('my-list');
+      const sampledPositions = [];
+      const timer = setInterval(() => {
+        sampledPositions.push(host._virtualScrollTop);
+      }, 20);
+
+      await host.scrollToIndex(target, { behavior: 'smooth', duration: 300 });
+      clearInterval(timer);
+
+      return {
+        sampledPositions,
+        firstSampled: sampledPositions[0],
+        finalPos: host._virtualScrollTop,
+      };
+    }, TARGET);
+
+    // Started from 0 without jumping
+    expect(result.firstSampled).toBeLessThan(100);
+    expect(result.sampledPositions.length).toBeGreaterThanOrEqual(3);
+  });
+
+  test('reverse distant smooth scroll jumps to approach runway above target and animates downward', async ({ page }) => {
+    const START_INDEX = 20000;
+    const TARGET_INDEX = 100;
+
+    // First jump to 20,000 instantly
+    await page.evaluate((idx) => {
+      document.getElementById('my-list').scrollToIndex(idx, { behavior: 'auto' });
+    }, START_INDEX);
+
+    const result = await page.evaluate(async (target) => {
+      const host = document.getElementById('my-list');
+      const vh = host.viewport.clientHeight;
+
+      const sampledPositions = [];
+      const timer = setInterval(() => {
+        sampledPositions.push(host._virtualScrollTop);
+      }, 25);
+
+      await host.scrollToIndex(target, { behavior: 'smooth', duration: 350 });
+      clearInterval(timer);
+
+      const targetOffset = host._clamp(host.registry.get_row_offset(target), 0, host.registry.get_total_height() - vh);
+
+      return {
+        sampledPositions,
+        firstSampled: sampledPositions[0],
+        targetOffset,
+        finalPos: host._virtualScrollTop,
+        vh,
+      };
+    }, TARGET_INDEX);
+
+    // First sampled position jumped from ~400k down to the runway near target (< targetOffset + 3 * vh)
+    expect(result.firstSampled).toBeLessThan(result.targetOffset + 3 * result.vh);
+    expect(result.finalPos).toBeCloseTo(result.targetOffset, 0);
+
+    const targetNode = page.locator(`#my-list [data-row="${TARGET_INDEX}"]`);
     await expect(targetNode).toBeAttached();
   });
 });

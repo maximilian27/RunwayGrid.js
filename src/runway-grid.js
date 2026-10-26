@@ -1196,11 +1196,46 @@ export class RunwayGrid extends HTMLElement {
     }
 
     return new Promise((resolve) => {
-      const startV = this._virtualScrollTop;
-      const startH = this._virtualScrollLeft;
+      let startV = this._virtualScrollTop;
+      let startH = this._virtualScrollLeft;
 
       const initialTargetV = this.verticalEnabled ? this._clamp(this.registry.get_row_offset(rowIndex), 0, this.registry.get_total_height() - vh) : 0;
       const initialTargetH = this.horizontalEnabled ? this._clamp(this.registry.get_col_offset(targetColClamped), 0, this.registry.get_total_width() - vw) : 0;
+
+      // Approach Runway Teleportation for distant smooth scrolls:
+      // If the target index is far away (> 5 viewport heights/widths away), do not interpolate
+      // through every unmeasured intermediate item. Instead, jump immediately to an approach runway
+      // positioned 1-2 viewports ahead of the destination and smoothly animate only that final approach.
+      let teleported = false;
+      if (this.verticalEnabled && vh > 0) {
+        const deltaV = initialTargetV - startV;
+        if (Math.abs(deltaV) > 5 * vh) {
+          const runwayDistanceV = 2 * vh;
+          startV = deltaV > 0
+            ? Math.max(startV, initialTargetV - runwayDistanceV)
+            : Math.min(startV, initialTargetV + runwayDistanceV);
+          startV = this._clamp(startV, 0, Math.max(0, this.registry.get_total_height() - vh));
+          this._virtualScrollTop = startV;
+          teleported = true;
+        }
+      }
+      if (this.horizontalEnabled && vw > 0) {
+        const deltaH = initialTargetH - startH;
+        if (Math.abs(deltaH) > 5 * vw) {
+          const runwayDistanceH = 2 * vw;
+          startH = deltaH > 0
+            ? Math.max(startH, initialTargetH - runwayDistanceH)
+            : Math.min(startH, initialTargetH + runwayDistanceH);
+          startH = this._clamp(startH, 0, Math.max(0, this.registry.get_total_width() - vw));
+          this._virtualScrollLeft = startH;
+          teleported = true;
+        }
+      }
+      if (teleported) {
+        this.calculateIndices();
+        this.updateSpacer();
+        this.syncTrackFromVirtual();
+      }
 
       const distance = Math.hypot(initialTargetV - startV, initialTargetH - startH);
 
