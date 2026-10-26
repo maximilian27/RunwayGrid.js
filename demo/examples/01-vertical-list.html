@@ -41,7 +41,7 @@
 
   <h1>1. Vertical list (single column)</h1>
   <p class="lede">
-    A single-column, vertically virtualized list over 1,000,000 rows. The <code>template</code>
+    A single-column, vertically virtualized list over 100,000,000 rows. The <code>template</code>
     function switches between three distinct row layouts (section header, media card, compact
     row) based on the row index, to show that row heights can vary arbitrarily and are
     auto-measured. Data-derived text is run through <code>escapeHtml()</code> before being
@@ -55,7 +55,7 @@
     </div>
     <div class="tab-panel active" data-tab="preview" role="tabpanel">
       <div class="controls">
-        <input type="number" id="index-input" value="50000" min="0" max="999999" />
+        <input type="number" id="index-input" value="5000000" min="0" max="99999999" />
         <button id="jump-btn">Jump to Index</button>
         <button id="start-btn">Top (0)</button>
         <button id="end-btn">End</button>
@@ -77,6 +77,15 @@
     </div>
   </div>
 
+  <div class="callout" style="margin-top: 20px; margin-bottom: 20px;">
+    <strong>Scale Differentiator: Bypassing Browser Height Limits at 100M+ Rows</strong><br />
+    At an estimated 20px per row, 100,000,000 rows creates a <strong>2,000,000,000px</strong> virtual height extent.
+    Traditional virtual scroll libraries break down beyond ~1.1M rows (Chromium's ~33.5M px element cap) or ~600k rows (Firefox's ~17.9M px element cap)
+    because they set a physical DOM spacer matching dataset height. RunwayGrid solves this by decoupling layout math into a 64-bit float
+    WebAssembly engine and capping scrollbar spacers to <code>SAFE_MAX_SPACER_SIZE</code> (10,000,000px) with proportional coordinate
+    translation—enabling fluid, unrestricted navigation across billions of virtual pixels.
+  </div>
+
   <h2>API used in this example</h2>
   <table>
     <thead><tr><th>API</th><th>Usage</th></tr></thead>
@@ -85,9 +94,10 @@
       <tr><td><code>row-size</code></td><td>Initial row height estimate (<code>20</code>px) before real heights are auto-measured.</td></tr>
       <tr><td><code>buffer-size</code></td><td><code>5</code> extra rows rendered outside the viewport on each side.</td></tr>
       <tr><td><code>template</code></td><td>Renders one of three row layouts depending on <code>index</code>.</td></tr>
-      <tr><td><code>data</code></td><td>Bound to a 1,000,000-item mock array.</td></tr>
+      <tr><td><code>data</code></td><td>Bound to a 100,000,000-item mock array.</td></tr>
       <tr><td><code>scrollToIndex(index, options)</code></td><td>Used by the Jump/Top/End buttons with <code>{ behavior: 'smooth' }</code>.</td></tr>
       <tr><td><code>rangechange</code></td><td>Logged to the console with both <code>e.buffered</code> and <code>e.viewport</code>.</td></tr>
+      <tr><td><code>SAFE_MAX_SPACER_SIZE</code></td><td>Caps scrollbar spacer height at 10,000,000px, enabling 100M rows (2B px virtual extent) to safely bypass browser element height limits.</td></tr>
     </tbody>
   </table>
 

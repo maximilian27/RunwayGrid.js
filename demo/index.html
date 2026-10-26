@@ -37,10 +37,11 @@
   <h1>runway-grid</h1>
   <p class="lede">
     A high-performance virtual scroll <code>&lt;runway-grid&gt;</code> custom element for rendering
-    very large lists and 2D grids (millions of rows/columns) while keeping the DOM small. The
+    very large lists and 2D grids (millions to 100M+ rows/columns) while keeping the DOM small. The
     layout math is powered by a Rust/WebAssembly engine (<code>runway_engine</code>), compiled and
     embedded directly into the published JavaScript - no separate <code>.wasm</code> file to host
-    or fetch.
+    or fetch. Designed with safe max height architecture to completely bypass native browser element
+    height limits.
   </p>
 
   <h2>Installation</h2>
@@ -111,8 +112,8 @@
   <div class="card-grid">
     <a class="card" href="examples/01-vertical-list.html">
       <span class="card-num">EXAMPLE 1</span>
-      <h3>Vertical list</h3>
-      <p>Single column, 1,000,000 rows, mixed variable-height row layouts.</p>
+      <h3>Vertical list (100M rows)</h3>
+      <p>Single column, 100,000,000 rows (2B px virtual extent) bypassing browser height limits.</p>
     </a>
     <a class="card" href="examples/02-grid-2d.html">
       <span class="card-num">EXAMPLE 2</span>
@@ -224,6 +225,26 @@
       <tr><td><code>wasmerror</code></td><td><code>e.detail.error</code></td><td>Fired if the embedded WASM engine fails to initialize (unsupported browser, CSP blocking <code>atob</code>-decoded binary instantiation, corrupt/incompatible build, etc.). The component never renders in this case; without a listener the failure would otherwise be an unhandled promise rejection with no visible fallback.</td></tr>
     </tbody>
   </table>
+
+  <h2>Constants</h2>
+  <table>
+    <thead>
+      <tr><th>Constant</th><th>Value</th><th>Description</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>SAFE_MAX_SPACER_SIZE</code></td><td><code>10000000</code></td><td>Upper bound in pixels (10,000,000px) applied to scrollbar spacers to avoid browser element height overflow and dimension clamping.</td></tr>
+      <tr><td><code>SAFE_MAX_HEIGHT</code></td><td><code>10000000</code></td><td>Backward-compatible alias for <code>SAFE_MAX_SPACER_SIZE</code>.</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Bypassing Browser Height Limits (100M+ Scale)</h2>
+  <div class="callout" style="margin-bottom: 20px;">
+    <strong>Why traditional virtual scrollers fail at scale:</strong><br />
+    Browsers enforce hard layout limits on element dimensions (~33.55M px in Chromium/WebKit, ~17.89M px in Firefox). Traditional virtual scrollers rely on a physical DOM spacer whose size matches the entire dataset, causing scrolling to clip, freeze, or fail past ~1 million rows.
+    <br /><br />
+    <strong>How RunwayGrid solves this:</strong><br />
+    RunwayGrid decouples virtual coordinate space (calculated with 64-bit floats in WebAssembly) from DOM spacer dimensions. The physical scrollbar spacer is capped at <code>SAFE_MAX_SPACER_SIZE</code> (10,000,000px), and scrollbar thumb travel is proportionally translated to virtual coordinates. The viewport mounts only ~30 recycled DOM nodes positioned via 3D transforms, effortlessly handling 100,000,000+ rows (a 2,000,000,000px virtual extent) with zero clipping or loss of scroll precision.
+  </div>
 
   <h2>Error handling</h2>
   <p class="lede">

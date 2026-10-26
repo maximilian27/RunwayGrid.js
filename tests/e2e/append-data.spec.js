@@ -12,6 +12,11 @@ test.describe('runway-grid - appendData (non-destructive infinite scroll)', () =
       const el = document.getElementById('my-list');
       return el && el.registry !== null && el.renderedNodes.length > 0;
     });
+    // Set a moderate initial dataset so appendData tests non-destructive growth without 100M-row WASM heap expansion
+    await page.evaluate(() => {
+      const el = document.getElementById('my-list');
+      el.data = Array.from({ length: 10000 }, (_, i) => `Item ${i}`);
+    });
   });
 
   test('appending rows preserves scroll position and extends the virtual size', async ({ page }) => {

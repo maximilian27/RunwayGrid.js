@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 
 // Mirrors the vertical-list dataset defined in examples/01-vertical-list.html (#my-list,
 // orientation="vertical").
-const TOTAL_ITEMS = 1000000;
+const TOTAL_ITEMS = 100000000;
 const LAST_INDEX = TOTAL_ITEMS - 1;
 
 // Regression coverage for the "stuck before the end" / "last element cut in half"
@@ -65,7 +65,7 @@ test.describe('runway-grid - reaching the true end (vertical axis)', () => {
     // A single, very large deltaY mimics an aggressive flick straight to the bottom;
     // the handler clamps the result to the true virtual max regardless of magnitude.
     await page.locator('#my-list .runway-grid__viewport').hover();
-    await page.mouse.wheel(0, 1_000_000_000);
+    await page.mouse.wheel(0, 10_000_000_000);
 
     await expectLandedFullyAtEnd(page);
   });

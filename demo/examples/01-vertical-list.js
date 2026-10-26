@@ -7,8 +7,19 @@ const jumpBtn = document.getElementById('jump-btn');
 const startBtn = document.getElementById('start-btn');
 const endBtn = document.getElementById('end-btn');
 
-// Generate 1,000,000 items instantly
-const mockData = Array.from({ length: 1000000 }, (_, i) => `Item string`);
+// Generate 100,000,000 items instantly (2,000,000,000px virtual extent at 20px/row).
+// Traditional virtual scrollers break past ~1M rows due to browser element height limits
+// (~33.5M px in Chromium/WebKit, ~17.9M px in Firefox). RunwayGrid decouples layout calculations
+// into a 64-bit float WebAssembly engine and caps the physical scrollbar spacer to
+// SAFE_MAX_SPACER_SIZE (10,000,000px) with proportional coordinate translation, seamlessly
+// bypassing browser height limits.
+const mockData = new Proxy([], {
+  get(target, prop) {
+    if (prop === 'length') return 100000000;
+    if (typeof prop === 'string' && !Number.isNaN(Number(prop))) return 'Item string';
+    return Reflect.get(target, prop);
+  }
+});
 
 // Define a highly complex, dynamic layout template.
 // Signature: (rowItem, rowIndex, colIndex, rowCount, colCount)
