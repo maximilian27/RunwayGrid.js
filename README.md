@@ -332,7 +332,11 @@ has been set.
 
 `runway-grid` is authored in plain JavaScript, but ships a hand-written declaration file (`dist/runway-grid.d.ts`, wired up via `package.json`'s `types`/`exports.types` fields) describing the `RunwayGrid` class, its attributes/properties/methods, the `rangechange` event's `buffered`/`viewport` properties, and the `<runway-grid>` tag itself (via `HTMLElementTagNameMap`), so `document.createElement('runway-grid')`/`querySelector('runway-grid')` and `import { RunwayGrid } from 'runway-grid'` are fully typed out of the box - no `@types/*` package needed.
 
-For contributors: `npm run typecheck` runs TypeScript (`tsc`, via a `tsconfig.json` with `allowJs`/`checkJs`) directly over `src/*.js`, using the JSDoc comments already on `src/runway-grid.js` as type annotations. This doesn't generate or replace `dist/runway-grid.d.ts` - it's a safety net that flags places where the implementation and its JSDoc types have drifted apart, so it should be run (and kept clean) after changing `src/runway-grid.js`.
+## Contributing
+
+I currently maintain full control over the core codebase to ensure architectural consistency. Bug reports and feature requests are welcome via [GitHub Issues](https://github.com/maximilian27/RunwayGrid/issues).
+
+**Community framework wrappers are welcome and encouraged!** If you build a wrapper for React, Angular, Vue, or another framework, you have my full blessing. See [CONTRIBUTING.md](./CONTRIBUTING.md) for the framework wrappers policy and attribution requirements.
 
 ## Styling
 
