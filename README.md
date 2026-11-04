@@ -1,5 +1,8 @@
 # runway-grid
 
+[![npm version](https://badge.fury.io/js/runway-grid.svg)](https://www.npmjs.com/package/runway-grid)
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](./LICENSE)
+
 A high-performance virtual scroll `<runway-grid>` custom element for rendering very large lists and 2D grids (millions to 100M+ rows/columns) while keeping the DOM small. The layout math is powered by a Rust/WebAssembly engine (`runway_engine`), compiled and embedded directly into the published JavaScript - no separate `.wasm` file to host or fetch. Engineered with safe max spacer architecture to completely bypass native browser element height limits.
 
 Supports:

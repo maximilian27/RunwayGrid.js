@@ -30,10 +30,18 @@
   "sideEffects": true,
   "keywords": [
     "virtual-scroll",
+    "virtual-list",
+    "virtual-grid",
     "web-component",
     "custom-element",
     "wasm",
-    "grid"
+    "rust",
+    "fenwick-tree",
+    "binary-indexed-tree",
+    "infinite-scroll",
+    "large-dataset",
+    "performance",
+    "100m-rows"
   ],
   "scripts": {
     "dev": "vite",
