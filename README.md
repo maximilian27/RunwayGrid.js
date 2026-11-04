@@ -1,5 +1,8 @@
 # runway-grid
 
+[![npm version](https://badge.fury.io/js/runway-grid.svg)](https://www.npmjs.com/package/runway-grid)
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](./LICENSE)
+
 A high-performance virtual scroll `<runway-grid>` custom element for rendering very large lists and 2D grids (millions to 100M+ rows/columns) while keeping the DOM small. The layout math is powered by a Rust/WebAssembly engine (`runway_engine`), compiled and embedded directly into the published JavaScript - no separate `.wasm` file to host or fetch. Engineered with safe max spacer architecture to completely bypass native browser element height limits.
 
 Supports:
@@ -332,7 +335,11 @@ has been set.
 
 `runway-grid` is authored in plain JavaScript, but ships a hand-written declaration file (`dist/runway-grid.d.ts`, wired up via `package.json`'s `types`/`exports.types` fields) describing the `RunwayGrid` class, its attributes/properties/methods, the `rangechange` event's `buffered`/`viewport` properties, and the `<runway-grid>` tag itself (via `HTMLElementTagNameMap`), so `document.createElement('runway-grid')`/`querySelector('runway-grid')` and `import { RunwayGrid } from 'runway-grid'` are fully typed out of the box - no `@types/*` package needed.
 
-For contributors: `npm run typecheck` runs TypeScript (`tsc`, via a `tsconfig.json` with `allowJs`/`checkJs`) directly over `src/*.js`, using the JSDoc comments already on `src/runway-grid.js` as type annotations. This doesn't generate or replace `dist/runway-grid.d.ts` - it's a safety net that flags places where the implementation and its JSDoc types have drifted apart, so it should be run (and kept clean) after changing `src/runway-grid.js`.
+## Contributing
+
+I currently maintain full control over the core codebase to ensure architectural consistency. Bug reports and feature requests are welcome via [GitHub Issues](https://github.com/maximilian27/RunwayGrid/issues).
+
+**Community framework wrappers are welcome and encouraged!** If you build a wrapper for React, Angular, Vue, or another framework, you have my full blessing. See [CONTRIBUTING.md](./CONTRIBUTING.md) for the framework wrappers policy and attribution requirements.
 
 ## Styling
 

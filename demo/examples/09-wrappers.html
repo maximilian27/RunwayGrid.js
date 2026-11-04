@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="light dark" />
+  <script>
+    (function () {
+      const stored = localStorage.getItem('runway-grid-demo-theme');
+      if (stored === 'light' || stored === 'dark') {
+        document.documentElement.setAttribute('data-theme', stored);
+      }
+    })();
+  </script>
+  <title>runway-grid - Framework Wrappers</title>
+  <link rel="stylesheet" href="../assets/theme.css" />
+</head>
+<body>
+
+<header class="site-header">
+  <a class="brand" href="../index.html">runway-grid</a>
+  <nav class="site-nav">
+    <a href="../index.html">Overview</a>
+    <a href="01-vertical-list.html">1. Vertical list</a>
+    <a href="02-grid-2d.html">2. 2D grid</a>
+    <a href="03-horizontal-list.html">3. Horizontal list</a>
+    <a href="04-infinite-vertical.html">4. Infinite (vertical)</a>
+    <a href="05-infinite-horizontal.html">5. Infinite (horizontal)</a>
+    <a href="06-sliding-vertical.html">6. Sliding window (vertical)</a>
+    <a href="07-sliding-horizontal.html">7. Sliding window (horizontal)</a>
+    <a href="08-autoscroll-telemetry.html">8. Telemetry log (auto-scroll)</a>
+    <a href="09-wrappers.html">9. Wrappers</a>
+  </nav>
+  <button class="theme-toggle" type="button" aria-label="Toggle color theme">Theme</button>
+</header>
+
+<main class="page">
+  <h1>Framework Wrappers</h1>
+  <p class="lede">
+    <code>runway-grid</code> is a framework-agnostic Web Component — it works in any environment
+    that supports Custom Elements, without needing a framework-specific wrapper.
+  </p>
+
+  <p class="lede">
+    Community-maintained wrappers provide a more idiomatic integration experience for specific
+    frameworks. If you build one and publish it, <strong>we'd love to feature it here</strong> —
+    just open a <a href="https://github.com/maximilian27/RunwayGrid/issues">GitHub Issue</a> with
+    the details.
+  </p>
+
+  <h2>Available Wrappers</h2>
+  <div class="card-grid">
+    <a class="card" href="https://stackblitz.com/~/github.com/maximilian27/runway-grid-angular" target="_blank" rel="noopener">
+      <span class="card-num">ANGULAR</span>
+      <h3>Angular Demo</h3>
+      <p>Reference implementation showing how to integrate <code>&lt;runway-grid&gt;</code> with Angular, including <code>CUSTOM_ELEMENTS_SCHEMA</code> setup and two-way binding patterns.</p>
+    </a>
+    <div class="card" style="opacity: 0.5; pointer-events: none;">
+      <span class="card-num">REACT</span>
+      <h3>React Demo <small>(coming soon)</small></h3>
+      <p>Reference implementation showing how to use <code>&lt;runway-grid&gt;</code> in React with hooks, refs, and proper lifecycle management.</p>
+    </div>
+  </div>
+
+  <h2>Building Your Own Wrapper</h2>
+  <p class="lede">
+    Since <code>runway-grid</code> is a standard Custom Element, wrapping it for any framework is
+    straightforward. The core API consists of:
+  </p>
+  <ul class="lede">
+    <li><strong>Attributes:</strong> <code>orientation</code>, <code>row-size</code>, <code>col-size</code>, <code>buffer-size</code>, <code>momentum-friction</code>, <code>momentum-max-speed</code>, <code>wheel-speed</code></li>
+    <li><strong>Properties:</strong> <code>data</code>, <code>columns</code>, <code>template</code></li>
+    <li><strong>Methods:</strong> <code>scrollToCell()</code>, <code>scrollToIndex()</code>, <code>appendData()</code>, <code>removeDataFromHead()</code>, <code>startAutoScroll()</code>, <code>stopAutoScroll()</code></li>
+    <li><strong>Events:</strong> <code>rangechange</code>, <code>wasmerror</code></li>
+  </ul>
+
+  <p class="lede">
+    For detailed API documentation, see the <a href="../index.html">main demo page</a>. For
+    framework-specific integration patterns, check the reference demos above.
+  </p>
+
+  <h2>Attribution Requirement</h2>
+  <p class="lede">
+    Any community wrapper must prominently credit <code>runway-grid</code> as the underlying
+    library. Specifically, the wrapper's <code>README.md</code> (or equivalent documentation)
+    should include a clear link back to the original
+    <a href="https://github.com/maximilian27/RunwayGrid">runway-grid repository</a> and mention
+    that it is built on top of runway-grid. This ensures proper attribution regardless of how
+    popular the wrapper becomes.
+  </p>
+
+  <p class="lede">
+    See <a href="https://github.com/maximilian27/RunwayGrid/blob/master/CONTRIBUTING.md#framework-wrappers">CONTRIBUTING.md</a>
+    for the full framework wrappers policy.
+  </p>
+</main>
+
+<script type="module" src="../assets/shared.js"></script>
+</body>
+</html>

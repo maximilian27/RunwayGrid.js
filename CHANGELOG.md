@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.0.2] - 2026-11-04
+
+### Added
+
+- **Framework Wrappers demo page**: Added `demo/examples/09-wrappers.html` showcasing community-maintained framework wrappers, with an Angular StackBlitz demo and a React demo placeholder.
+- **Contributing guidelines**: Created `CONTRIBUTING.md` with development setup, build instructions, testing workflow, and framework wrappers policy.
+- **Attribution notice**: Added `NOTICE` file for Apache 2.0 license compliance, ensuring proper attribution in derivative works.
+- **README badges**: Added npm version and Apache 2.0 license badges to the top of `README.md`.
+- **npm keywords**: Expanded package keywords to include "virtual-list", "virtual-grid", "fenwick-tree", "binary-indexed-tree", "infinite-scroll", "large-dataset", "performance", and "100m-rows" for improved discoverability.
+
+### Changed
+
+- **Contribution policy**: Updated `README.md` and `CONTRIBUTING.md` to use flexible language — core contributions are generally not accepted, but exceptional cases (critical security fixes, performance regressions) may be considered on a case-by-case basis.
+- **Demo navigation**: Added "9. Wrappers" link to all demo pages and example files for consistent access to the framework wrappers section.
+
 ## [1.0.1] - 2026-10-25
 
 ### Added
